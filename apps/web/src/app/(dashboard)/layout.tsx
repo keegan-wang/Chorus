@@ -1,9 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
@@ -22,10 +21,17 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const router = useRouter();
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [user, setUser] = useState<{ name: string; userType: string } | null>(null);
 
-  async function handleSignOut() {
-    const supabase = createClient();
-    await supabase.auth.signOut();
+  useEffect(() => {
+    const storedUser = localStorage.getItem('user');
+    if (storedUser) {
+      setUser(JSON.parse(storedUser));
+    }
+  }, []);
+
+  function handleSignOut() {
+    localStorage.removeItem('user');
     router.push('/login');
   }
 
@@ -68,7 +74,13 @@ export default function DashboardLayout({
         </nav>
 
         {/* User section */}
-        <div className="border-t p-4">
+        <div className="border-t p-4 space-y-2">
+          {user && (
+            <div className="px-3 py-2 text-sm">
+              <p className="font-medium">{user.name}</p>
+              <p className="text-muted-foreground text-xs capitalize">{user.userType}</p>
+            </div>
+          )}
           <Button
             variant="ghost"
             className="w-full justify-start"
