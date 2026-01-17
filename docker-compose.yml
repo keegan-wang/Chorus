@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  # Redis for session state and queues
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Python Agents Service
+  agents:
+    build:
+      context: ./apps/agents
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - HEYGEN_API_KEY=${HEYGEN_API_KEY}
+      - ELEVENLABS_API_KEY=${ELEVENLABS_API_KEY}
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./apps/agents:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # NestJS API (optional, can run locally)
+  # api:
+  #   build:
+  #     context: ./apps/api
+  #     dockerfile: Dockerfile
+  #   ports:
+  #     - "4000:4000"
+  #   environment:
+  #     - NODE_ENV=development
+  #     - SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
+  #     - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+  #     - REDIS_URL=redis://redis:6379
+  #     - AGENTS_URL=http://agents:8000
+  #   depends_on:
+  #     - redis
+  #     - agents
+
+volumes:
+  redis_data:

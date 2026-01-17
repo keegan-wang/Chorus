@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(git config:*)",
-      "Bash(git fetch:*)"
+      "Bash(git fetch:*)",
+      "Bash(git add:*)"
     ]
   }
 }
