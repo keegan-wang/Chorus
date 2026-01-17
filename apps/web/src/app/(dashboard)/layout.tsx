@@ -7,10 +7,10 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 const navigation = [
-  { name: 'Studies', href: '/studies', icon: '📊' },
-  { name: 'Participants', href: '/participants', icon: '👥' },
-  { name: 'Integrations', href: '/integrations', icon: '🔗' },
-  { name: 'Settings', href: '/settings', icon: '⚙️' },
+  { name: 'Studies', href: '/studies' },
+  { name: 'Participants', href: '/participants' },
+  { name: 'Integrations', href: '/integrations' },
+  { name: 'Settings', href: '/settings' },
 ];
 
 export default function DashboardLayout({
@@ -66,8 +66,7 @@ export default function DashboardLayout({
                     : 'text-muted-foreground hover:bg-muted hover:text-foreground'
                 )}
               >
-                <span className="text-lg">{item.icon}</span>
-                <span>{item.name}</span>
+                {item.name}
               </Link>
             );
           })}

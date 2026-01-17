@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { Button } from '@/components/ui/button';
@@ -8,6 +8,24 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
+
+const ageRanges = [
+  { value: 'all', label: 'All Ages' },
+  { value: 'under-18', label: 'Under 18' },
+  { value: '18-24', label: '18-24' },
+  { value: '25-34', label: '25-34' },
+  { value: '35-44', label: '35-44' },
+  { value: '45-54', label: '45-54' },
+  { value: '55-64', label: '55-64' },
+  { value: '65-plus', label: '65+' },
+];
+
+const genderOptions = [
+  { value: 'all', label: 'All Genders' },
+  { value: 'male', label: 'Male' },
+  { value: 'female', label: 'Female' },
+  { value: 'other', label: 'Other' },
+];
 
 interface Question {
   id: string;
@@ -39,6 +57,8 @@ export default function NewStudyPage() {
     description: '',
     type: 'exploratory',
     targetParticipants: 50,
+    targetAge: 'all',
+    targetGender: 'all',
     guardrailProfile: 'balanced',
     maxFollowUps: 2,
     maxQuestions: 10,
@@ -48,6 +68,35 @@ export default function NewStudyPage() {
   const [questions, setQuestions] = useState<Question[]>([
     { id: '1', text: '', order: 1 },
   ]);
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file && (file.type === 'text/csv' || file.name.endsWith('.csv') || file.name.endsWith('.xlsx') || file.name.endsWith('.xls'))) {
+      setUploadedFile(file);
+    }
+  }, []);
+
+  const handleFileSelect = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      setUploadedFile(file);
+    }
+  }, []);
 
   const updateField = (field: string, value: string | number | boolean) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -268,6 +317,103 @@ export default function NewStudyPage() {
                 }
               />
             </div>
+
+            {/* Target Demographics */}
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="targetAge">Target Age Range</Label>
+                <select
+                  id="targetAge"
+                  value={formData.targetAge}
+                  onChange={(e) => updateField('targetAge', e.target.value)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                  {ageRanges.map((age) => (
+                    <option key={age.value} value={age.value}>
+                      {age.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="targetGender">Target Gender</Label>
+                <select
+                  id="targetGender"
+                  value={formData.targetGender}
+                  onChange={(e) => updateField('targetGender', e.target.value)}
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                >
+                  {genderOptions.map((gender) => (
+                    <option key={gender.value} value={gender.value}>
+                      {gender.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            {/* Customer Database Upload */}
+            <div className="space-y-2">
+              <Label>Customer Database (Optional)</Label>
+              <p className="text-sm text-muted-foreground mb-2">
+                Upload a CSV or Excel file with your customer contacts to send interviews to
+              </p>
+              <div
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDrop}
+                onClick={() => fileInputRef.current?.click()}
+                className={`relative flex flex-col items-center justify-center rounded-lg border-2 border-dashed p-8 transition-colors cursor-pointer ${
+                  isDragging
+                    ? 'border-primary bg-primary/5'
+                    : uploadedFile
+                    ? 'border-green-500 bg-green-50'
+                    : 'border-muted-foreground/25 hover:border-muted-foreground/50'
+                }`}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv,.xlsx,.xls"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+                {uploadedFile ? (
+                  <>
+                    <svg className="w-10 h-10 text-green-500 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p className="text-sm font-medium">{uploadedFile.name}</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {(uploadedFile.size / 1024).toFixed(1)} KB
+                    </p>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setUploadedFile(null);
+                      }}
+                      className="mt-2 text-xs text-red-500 hover:text-red-700"
+                    >
+                      Remove file
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <svg className="w-10 h-10 text-muted-foreground/50 mb-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                    </svg>
+                    <p className="text-sm font-medium">
+                      Drag and drop your file here
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      or click to browse (CSV, Excel)
+                    </p>
+                  </>
+                )}
+              </div>
+            </div>
+
             <div className="flex justify-end pt-4">
               <Button
                 onClick={() => setStep(2)}
