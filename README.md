@@ -108,6 +108,18 @@ chorus/
 
 ## Development
 
+### Quick Start (Recommended)
+
+```bash
+# Start all services automatically (opens 2 terminals + browser)
+./start.sh
+
+# Stop all services
+./stop.sh
+```
+
+### Manual Start
+
 ```bash
 # Run all services in development mode
 pnpm dev
