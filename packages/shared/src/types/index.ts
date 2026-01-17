@@ -4,7 +4,7 @@
 // =============================================================================
 
 // Re-export all database types
-export * from '@chorus/database/types';
+export * from '@chorus/database';
 
 // =============================================================================
 // API REQUEST/RESPONSE TYPES
@@ -80,7 +80,7 @@ export interface CreateStudyRequest {
   guardrail_profile?: string;
 }
 
-export interface UpdateStudyRequest extends Partial<CreateStudyRequest> {}
+export interface UpdateStudyRequest extends Partial<CreateStudyRequest> { }
 
 export interface LaunchStudyRequest {
   participant_ids?: string[];
@@ -129,7 +129,7 @@ export interface CreateParticipantRequest {
   metadata?: Record<string, any>;
 }
 
-export interface UpdateParticipantRequest extends Partial<CreateParticipantRequest> {}
+export interface UpdateParticipantRequest extends Partial<CreateParticipantRequest> { }
 
 export interface ImportParticipantsResponse {
   job_id: string;

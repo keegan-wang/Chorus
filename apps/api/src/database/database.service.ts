@@ -6,11 +6,11 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 export class DatabaseService implements OnModuleInit {
   private supabase: SupabaseClient;
 
-  constructor(private configService: ConfigService) {}
+  constructor(private configService: ConfigService) { }
 
   onModuleInit() {
-    const supabaseUrl = this.configService.get<string>('SUPABASE_URL');
-    const supabaseKey = this.configService.get<string>('SUPABASE_SERVICE_KEY');
+    const supabaseUrl = this.configService.get<string>('NEXT_PUBLIC_SUPABASE_URL');
+    const supabaseKey = this.configService.get<string>('SUPABASE_SERVICE_ROLE_KEY');
 
     if (!supabaseUrl || !supabaseKey) {
       throw new Error('Missing Supabase configuration');
@@ -30,8 +30,8 @@ export class DatabaseService implements OnModuleInit {
 
   // Helper method to get client with user context
   getClientForUser(userId: string): SupabaseClient {
-    const supabaseUrl = this.configService.get<string>('SUPABASE_URL');
-    const supabaseKey = this.configService.get<string>('SUPABASE_SERVICE_KEY');
+    const supabaseUrl = this.configService.get<string>('NEXT_PUBLIC_SUPABASE_URL');
+    const supabaseKey = this.configService.get<string>('SUPABASE_SERVICE_ROLE_KEY');
 
     return createClient(supabaseUrl, supabaseKey, {
       auth: {
