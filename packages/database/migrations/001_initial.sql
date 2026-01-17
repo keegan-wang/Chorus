@@ -30,7 +30,7 @@ CREATE INDEX IF NOT EXISTS idx_organizations_slug ON organizations(slug);
 -- USERS (extends Supabase auth.users)
 -- =============================================================================
 CREATE TABLE IF NOT EXISTS users (
-    id              UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    id              UUID PRIMARY KEY,
     organization_id UUID REFERENCES organizations(id) ON DELETE CASCADE,
     email           TEXT NOT NULL,
     full_name       TEXT,
@@ -39,6 +39,9 @@ CREATE TABLE IF NOT EXISTS users (
     created_at      TIMESTAMPTZ DEFAULT NOW(),
     updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- Note: id should match auth.users(id) but we can't create FK due to schema permissions
+-- This will be enforced at the application level
 
 CREATE INDEX IF NOT EXISTS idx_users_organization ON users(organization_id);
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
