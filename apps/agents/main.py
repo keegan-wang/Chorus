@@ -3,9 +3,9 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 from dotenv import load_dotenv
 
-from routers import question, quality, summary, overview, avatar, transcribe, avatar_selection
-
 load_dotenv(dotenv_path="../../.env")
+
+from routers import question, quality, summary, overview, avatar, transcribe, avatar_selection
 
 app = FastAPI(
     title="Chorus Agents API",
