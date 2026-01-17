@@ -42,28 +42,48 @@ Chorus enables companies to run fully automated, AI-driven, avatar-based intervi
 
 ```bash
 # Clone the repository
-git clone https://github.com/your-org/chorus.git
-cd chorus
+git clone https://github.com/keegan-wang/Chorus.git
+cd Chorus
 
-# Install dependencies
+# Install JavaScript dependencies
 pnpm install
 
+# Install Python dependencies for agents
+cd apps/agents
+pip install -r requirements.txt
+cd ../..
+
 # Copy environment variables
-cp .env.example .env.local
-# Fill in required values in .env.local
+cp .env.example .env
+# Fill in required values in .env:
+# - SUPABASE_URL
+# - SUPABASE_ANON_KEY
+# - SUPABASE_SERVICE_KEY
+# - OPENAI_API_KEY
+# - HEYGEN_API_KEY (optional)
+# - ELEVENLABS_API_KEY (optional)
 
 # Start Redis (if using Docker)
-docker-compose up -d redis
+docker-compose up -d
 
 # Run database migrations
-pnpm db:migrate
+cd packages/database
+psql $SUPABASE_URL < migrations/001_initial.sql
+psql $SUPABASE_URL < migrations/002_views.sql
 
 # Seed initial data
-pnpm db:seed
+psql $SUPABASE_URL < seed/001_guardrails.sql
+psql $SUPABASE_URL < seed/002_avatars.sql
+cd ../..
 
-# Start development servers
+# Start all development servers
 pnpm dev
 ```
+
+This will start:
+- Frontend (Next.js) on http://localhost:3000
+- Backend API (NestJS) on http://localhost:3001
+- Python Agents on http://localhost:8000
 
 ### Project Structure
 
@@ -93,20 +113,52 @@ chorus/
 pnpm dev
 
 # Run only the frontend
-pnpm --filter web dev
+pnpm --filter @chorus/web dev
 
-# Run only the API
-pnpm --filter api dev
+# Run only the backend API
+pnpm --filter @chorus/api dev
 
-# Run Python agents
-cd apps/agents && python -m uvicorn app.main:app --reload
+# Run Python agents service
+cd apps/agents && python main.py
+
+# Run type checking
+pnpm --filter @chorus/web typecheck
+pnpm --filter @chorus/api build
 
 # Run linting
-pnpm lint
+pnpm --filter @chorus/web lint
+pnpm --filter @chorus/api lint
 
-# Run tests
-pnpm test
+# Build for production
+pnpm build
 ```
+
+## Architecture
+
+### Interview Flow
+
+1. **Participant receives email invitation** with unique token link
+2. **Participant opens interview** → Session starts
+3. **Avatar Selection Agent** selects demographically-appropriate avatar
+4. **Question Agent** generates first question from seed questions
+5. **Avatar Agent** generates video of avatar asking the question
+6. **Participant responds** via text or voice
+7. **Transcription** converts audio to text (if voice response)
+8. **Quality Agent** scores the Q&A pair
+9. **Question Agent** generates next question based on conversation history
+10. **Loop continues** until max questions reached
+11. **Summary Agent** generates session summary
+12. **Overview Agent** generates study-level report when study completes
+
+### Agent Communication
+
+```
+Next.js Frontend → NestJS API → Python Agents
+                ↓
+            Supabase Database
+```
+
+All agents communicate via RESTful HTTP APIs. Real-time updates use WebSockets for interview sessions.
 
 ## License
 
