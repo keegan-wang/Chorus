@@ -55,4 +55,3 @@ echo ""
 echo "⚠️  Keep the terminal windows open to keep services running"
 echo "⚠️  Press Ctrl+C in each terminal to stop services"
 echo ""
-EOF

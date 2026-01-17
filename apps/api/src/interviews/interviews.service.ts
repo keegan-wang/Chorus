@@ -8,7 +8,7 @@ export class InterviewsService {
   constructor(
     private databaseService: DatabaseService,
     private agentsService: AgentsService,
-  ) {}
+  ) { }
 
   async startInterview(sessionId: string) {
     const supabase = this.databaseService.getClient();
@@ -67,11 +67,12 @@ export class InterviewsService {
 
     // Generate avatar video for the question (if avatar assigned)
     let avatarVideoUrl = null;
-    if (assignment?.avatar) {
+    const avatar = Array.isArray(assignment.avatar) ? assignment.avatar[0] : assignment.avatar;
+    if (avatar) {
       avatarVideoUrl = await this.agentsService.generateAvatarVideo({
-        avatarId: assignment.avatar.id,
+        avatarId: avatar.id,
         text: firstQuestion.text,
-        voice: assignment.avatar.voice_config,
+        voice: avatar.voice_config,
       });
     }
 
@@ -190,11 +191,14 @@ export class InterviewsService {
 
     let avatarVideoUrl = null;
     if (assignment?.avatar) {
-      avatarVideoUrl = await this.agentsService.generateAvatarVideo({
-        avatarId: assignment.avatar.id,
-        text: nextQuestion.text,
-        voice: assignment.avatar.voice_config,
-      });
+      const avatar = Array.isArray(assignment.avatar) ? assignment.avatar[0] : assignment.avatar;
+      if (avatar) {
+        avatarVideoUrl = await this.agentsService.generateAvatarVideo({
+          avatarId: avatar.id,
+          text: nextQuestion.text,
+          voice: avatar.voice_config,
+        });
+      }
     }
 
     return {

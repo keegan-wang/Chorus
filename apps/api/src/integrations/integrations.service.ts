@@ -8,7 +8,7 @@ export class IntegrationsService {
   constructor(
     private httpService: HttpService,
     private databaseService: DatabaseService,
-  ) {}
+  ) { }
 
   async importFromShopify(
     organizationId: string,
@@ -41,7 +41,7 @@ export class IntegrationsService {
         ),
       );
 
-      const customers = response.data.customers || [];
+      const customers = response.data['customers'] || [];
 
       // Transform Shopify customers to participants
       const participants = customers.map((customer: any) => ({
@@ -74,7 +74,7 @@ export class IntegrationsService {
         imported: data?.length || 0,
         participants: data,
       };
-    } catch (error) {
+    } catch (error: any) {
       throw new Error(`Shopify import failed: ${error.message}`);
     }
   }
