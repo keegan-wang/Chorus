@@ -4,12 +4,22 @@ from typing import List, Dict, Any, Optional
 import os
 from openai import OpenAI
 
-import os
+
 from supabase import create_client, Client
 
+router = APIRouter()
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+
 # Initialize Supabase Client
-url: str = os.environ.get("SUPABASE_URL")
-key: str = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
+# Initialize Supabase Client
+url: str = os.environ.get("SUPABASE_URL") or os.environ.get("NEXT_PUBLIC_SUPABASE_URL")
+key: str = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+
+if not url:
+    raise ValueError("Supabase URL is missing. Please set SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL.")
+if not key:
+    raise ValueError("Supabase Key is missing. Please set SUPABASE_SERVICE_ROLE_KEY.")
+
 supabase: Client = create_client(url, key)
 
 class ConversationTurn(BaseModel):

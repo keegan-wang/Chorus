@@ -18,7 +18,7 @@ class TranscribeResponse(BaseModel):
 @router.post("/transcribe", response_model=TranscribeResponse)
 async def transcribe_audio(request: TranscribeRequest):
     """
-    Transcription: Transcribe audio to text using OpenAI Whisper API.
+    Transcription: Transcribe audio from a URL using OpenAI Whisper API.
     """
     try:
         # Download the audio file
@@ -36,15 +36,16 @@ async def transcribe_audio(request: TranscribeRequest):
             f.write(audio_data)
 
         # Transcribe with Whisper
-        with open(temp_file, "rb") as audio_file:
-            transcript = client.audio.transcriptions.create(
-                model="whisper-1",
-                file=audio_file,
-                response_format="text"
-            )
-
-        # Clean up temp file
-        os.remove(temp_file)
+        try:
+            with open(temp_file, "rb") as audio_file:
+                transcript = client.audio.transcriptions.create(
+                    model="whisper-1",
+                    file=audio_file,
+                    response_format="text"
+                )
+        finally:
+            if os.path.exists(temp_file):
+                os.remove(temp_file)
 
         return TranscribeResponse(
             text=transcript,
@@ -53,7 +54,37 @@ async def transcribe_audio(request: TranscribeRequest):
         )
 
     except Exception as e:
-        # Clean up temp file if it exists
-        if 'temp_file' in locals() and os.path.exists(temp_file):
-            os.remove(temp_file)
         raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
+
+from fastapi import UploadFile, File
+
+@router.post("/transcribe/upload", response_model=TranscribeResponse)
+async def transcribe_file(file: UploadFile = File(...)):
+    """
+    Transcription: Transcribe an uploaded audio file directly using OpenAI Whisper API.
+    """
+    temp_file = f"/tmp/upload_{os.urandom(8).hex()}_{file.filename}"
+    try:
+        # Save uploaded file temporarily
+        with open(temp_file, "wb") as f:
+            f.write(await file.read())
+
+        # Transcribe
+        with open(temp_file, "rb") as audio_file:
+            transcript = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file,
+                response_format="text"
+            )
+
+        return TranscribeResponse(
+            text=transcript,
+            language="en",
+            confidence=0.95
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
+    finally:
+        if os.path.exists(temp_file):
+            os.remove(temp_file)

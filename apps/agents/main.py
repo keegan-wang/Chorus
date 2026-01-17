@@ -4,6 +4,7 @@ import uvicorn
 from dotenv import load_dotenv
 
 load_dotenv(dotenv_path="../../.env")
+load_dotenv(dotenv_path="../../.env.local", override=True)
 
 from routers import question, quality, summary, overview, avatar, transcribe, avatar_selection
 
