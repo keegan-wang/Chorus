@@ -464,24 +464,25 @@ ALTER TABLE payouts ENABLE ROW LEVEL SECURITY;
 ALTER TABLE integrations ENABLE ROW LEVEL SECURITY;
 
 -- Helper function: Get user's organization
-CREATE OR REPLACE FUNCTION auth.user_organization_id()
+-- Note: Using public schema instead of auth due to Supabase permission restrictions
+CREATE OR REPLACE FUNCTION public.user_organization_id()
 RETURNS UUID AS $$
-  SELECT organization_id FROM users WHERE id = auth.uid()
+  SELECT organization_id FROM public.users WHERE id = auth.uid()
 $$ LANGUAGE SQL SECURITY DEFINER;
 
 -- Organizations: Users can only see their own org
 CREATE POLICY "Users can view own organization"
     ON organizations FOR SELECT
-    USING (id = auth.user_organization_id());
+    USING (id = public.user_organization_id());
 
 CREATE POLICY "Owners can update organization"
     ON organizations FOR UPDATE
-    USING (id = auth.user_organization_id());
+    USING (id = public.user_organization_id());
 
 -- Users: Users can see users in their org
 CREATE POLICY "Users can view org members"
     ON users FOR SELECT
-    USING (organization_id = auth.user_organization_id());
+    USING (organization_id = public.user_organization_id());
 
 CREATE POLICY "Users can update own profile"
     ON users FOR UPDATE
@@ -490,43 +491,43 @@ CREATE POLICY "Users can update own profile"
 -- Studies: Organization-scoped
 CREATE POLICY "Users can view org studies"
     ON studies FOR SELECT
-    USING (organization_id = auth.user_organization_id());
+    USING (organization_id = public.user_organization_id());
 
 CREATE POLICY "Users can create org studies"
     ON studies FOR INSERT
-    WITH CHECK (organization_id = auth.user_organization_id());
+    WITH CHECK (organization_id = public.user_organization_id());
 
 CREATE POLICY "Users can update org studies"
     ON studies FOR UPDATE
-    USING (organization_id = auth.user_organization_id());
+    USING (organization_id = public.user_organization_id());
 
 CREATE POLICY "Users can delete org studies"
     ON studies FOR DELETE
-    USING (organization_id = auth.user_organization_id());
+    USING (organization_id = public.user_organization_id());
 
 -- Participants: Organization-scoped
 CREATE POLICY "Users can view org participants"
     ON participants FOR SELECT
-    USING (organization_id = auth.user_organization_id());
+    USING (organization_id = public.user_organization_id());
 
 CREATE POLICY "Users can create org participants"
     ON participants FOR INSERT
-    WITH CHECK (organization_id = auth.user_organization_id());
+    WITH CHECK (organization_id = public.user_organization_id());
 
 CREATE POLICY "Users can update org participants"
     ON participants FOR UPDATE
-    USING (organization_id = auth.user_organization_id());
+    USING (organization_id = public.user_organization_id());
 
 CREATE POLICY "Users can delete org participants"
     ON participants FOR DELETE
-    USING (organization_id = auth.user_organization_id());
+    USING (organization_id = public.user_organization_id());
 
 -- Assignments: Via study organization
 CREATE POLICY "Users can view org assignments"
     ON study_participant_assignments FOR SELECT
     USING (
         study_id IN (
-            SELECT id FROM studies WHERE organization_id = auth.user_organization_id()
+            SELECT id FROM studies WHERE organization_id = public.user_organization_id()
         )
     );
 
@@ -534,7 +535,7 @@ CREATE POLICY "Users can manage org assignments"
     ON study_participant_assignments FOR ALL
     USING (
         study_id IN (
-            SELECT id FROM studies WHERE organization_id = auth.user_organization_id()
+            SELECT id FROM studies WHERE organization_id = public.user_organization_id()
         )
     );
 
@@ -543,7 +544,7 @@ CREATE POLICY "Users can view org sessions"
     ON interview_sessions FOR SELECT
     USING (
         study_id IN (
-            SELECT id FROM studies WHERE organization_id = auth.user_organization_id()
+            SELECT id FROM studies WHERE organization_id = public.user_organization_id()
         )
     );
 
@@ -553,7 +554,7 @@ CREATE POLICY "Users can view org qa_turns"
     USING (
         session_id IN (
             SELECT id FROM interview_sessions WHERE study_id IN (
-                SELECT id FROM studies WHERE organization_id = auth.user_organization_id()
+                SELECT id FROM studies WHERE organization_id = public.user_organization_id()
             )
         )
     );
@@ -565,7 +566,7 @@ CREATE POLICY "Users can view org quality_labels"
         qa_turn_id IN (
             SELECT id FROM qa_turns WHERE session_id IN (
                 SELECT id FROM interview_sessions WHERE study_id IN (
-                    SELECT id FROM studies WHERE organization_id = auth.user_organization_id()
+                    SELECT id FROM studies WHERE organization_id = public.user_organization_id()
                 )
             )
         )
@@ -577,7 +578,7 @@ CREATE POLICY "Users can view org summaries"
     USING (
         session_id IN (
             SELECT id FROM interview_sessions WHERE study_id IN (
-                SELECT id FROM studies WHERE organization_id = auth.user_organization_id()
+                SELECT id FROM studies WHERE organization_id = public.user_organization_id()
             )
         )
     );
@@ -587,32 +588,32 @@ CREATE POLICY "Users can view org reports"
     ON study_reports FOR SELECT
     USING (
         study_id IN (
-            SELECT id FROM studies WHERE organization_id = auth.user_organization_id()
+            SELECT id FROM studies WHERE organization_id = public.user_organization_id()
         )
     );
 
 -- Import Jobs: Organization-scoped
 CREATE POLICY "Users can view org imports"
     ON import_jobs FOR SELECT
-    USING (organization_id = auth.user_organization_id());
+    USING (organization_id = public.user_organization_id());
 
 CREATE POLICY "Users can create org imports"
     ON import_jobs FOR INSERT
-    WITH CHECK (organization_id = auth.user_organization_id());
+    WITH CHECK (organization_id = public.user_organization_id());
 
 -- Payouts: Organization-scoped
 CREATE POLICY "Users can view org payouts"
     ON payouts FOR SELECT
-    USING (organization_id = auth.user_organization_id());
+    USING (organization_id = public.user_organization_id());
 
 -- Integrations: Organization-scoped
 CREATE POLICY "Users can view org integrations"
     ON integrations FOR SELECT
-    USING (organization_id = auth.user_organization_id());
+    USING (organization_id = public.user_organization_id());
 
 CREATE POLICY "Users can manage org integrations"
     ON integrations FOR ALL
-    USING (organization_id = auth.user_organization_id());
+    USING (organization_id = public.user_organization_id());
 
 -- =============================================================================
 -- PUBLIC ACCESS FOR INTERVIEW PARTICIPANTS
