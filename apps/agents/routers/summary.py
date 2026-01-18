@@ -9,8 +9,18 @@ router = APIRouter()
 openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # Initialize Supabase client
-supabase_url = os.getenv("NEXT_PUBLIC_SUPABASE_URL")
-supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+supabase_url = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
+supabase_key = (
+    os.getenv("SUPABASE_SERVICE_KEY")
+    or os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+    or os.getenv("NEXT_PUBLIC_SUPABASE_ANON_KEY")
+)
+if not supabase_url:
+    raise ValueError("Supabase URL is missing. Set SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL.")
+if not supabase_key:
+    raise ValueError(
+        "Supabase key is missing. Set SUPABASE_SERVICE_KEY or SUPABASE_SERVICE_ROLE_KEY."
+    )
 supabase: Client = create_client(supabase_url, supabase_key)
 
 class SummaryRequest(BaseModel):

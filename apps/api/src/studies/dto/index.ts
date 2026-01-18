@@ -37,17 +37,29 @@ export class CreateStudyDto {
 
   @ApiProperty({ enum: StudyType })
   @IsEnum(StudyType)
-  type: StudyType;
+  @IsOptional()
+  type?: StudyType;
 
   @ApiProperty()
   @IsNumber()
   @Min(1)
-  target_participants: number;
+  @IsOptional()
+  target_participant_count?: number;
 
   @ApiPropertyOptional()
   @IsString()
   @IsOptional()
-  guardrail_profile_id?: string;
+  guardrail_profile?: string;
+
+  @ApiPropertyOptional()
+  @IsObject()
+  @IsOptional()
+  target_demographics?: Record<string, any>;
+
+  @ApiPropertyOptional()
+  @IsObject()
+  @IsOptional()
+  research_intent?: Record<string, any>;
 
   @ApiPropertyOptional()
   @IsObject()
@@ -58,6 +70,13 @@ export class CreateStudyDto {
     allow_skip?: boolean;
     require_audio_response?: boolean;
   };
+
+  @ApiPropertyOptional()
+  @IsOptional()
+  questions?: Array<{
+    text: string;
+    order: number;
+  }>;
 }
 
 export class UpdateStudyDto {

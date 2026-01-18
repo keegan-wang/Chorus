@@ -31,6 +31,23 @@ export default function DashboardLayout({
     }
   }, []);
 
+  useEffect(() => {
+    if (!user) return;
+
+    const isCompanyOnlyRoute = ['/studies', '/participants', '/integrations'].some((route) =>
+      pathname.startsWith(route)
+    );
+    const isIndividualOnlyRoute = pathname.startsWith('/my-interviews');
+
+    if (user.userType === 'individual' && isCompanyOnlyRoute) {
+      router.replace('/my-interviews');
+    }
+
+    if (user.userType === 'company' && isIndividualOnlyRoute) {
+      router.replace('/studies');
+    }
+  }, [pathname, router, user]);
+
   function handleSignOut() {
     localStorage.removeItem('user');
     router.push('/login');

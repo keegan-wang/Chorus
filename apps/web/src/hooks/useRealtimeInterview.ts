@@ -151,11 +151,9 @@ export function useRealtimeInterview({
 
       case 'audio_complete':
         if (message.data) {
-          console.log(`[Audio] Received complete audio (${message.data.length} bytes, format: ${(message as any).format || 'unknown'})`);
+          console.log(`[Audio] Received audio (${message.data.length} bytes)`);
           onAudioComplete?.(message.data);
           playCompleteAudio(message.data, (message as any).format);
-        } else {
-          console.warn('[Audio] Received audio_complete with no data');
         }
         break;
 
@@ -187,7 +185,8 @@ export function useRealtimeInterview({
 
   // Initialize Socket.IO connection
   useEffect(() => {
-    const socket = io(process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001', {
+    // Socket.IO connects to the base server URL (not the /api/v1 path)
+    const socket = io('http://localhost:3001', {
       transports: ['websocket'],
       reconnection: true,
       reconnectionDelay: 1000,

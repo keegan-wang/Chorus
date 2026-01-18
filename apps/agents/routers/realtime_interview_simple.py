@@ -27,11 +27,11 @@ supabase: Client = create_client(url, key)
 class SimpleInterviewSession:
     """Simplified interview session using Whisper + TTS"""
 
-    def __init__(self, session_id: str, study_id: str, question_id: str, participant_id: str):
+    def __init__(self, session_id: str, study_id: str, participant_id: str, question_id: str = None):
         self.session_id = session_id
         self.study_id = study_id
-        self.question_id = question_id
         self.participant_id = participant_id
+        self.question_id = question_id
         self.conversation_history = []
         self.current_question = None
         self.client_ws = None
@@ -49,13 +49,26 @@ class SimpleInterviewSession:
     async def get_and_speak_next_question(self):
         """Get next question and generate TTS audio"""
 
+        print(f"\n{'='*80}")
+        print(f"[Question Agent] Starting question generation for turn {len(self.conversation_history) + 1}")
+        print(f"{'='*80}\n")
+
         # Fetch participant data
         participant_response = supabase.table("participants").select("*").eq("id", self.participant_id).single().execute()
         participant_data = participant_response.data if participant_response.data else {}
+        print(f"[Question Agent] Fetched participant data")
 
         # Fetch question data
-        question_response = supabase.table("research_questions").select("*").eq("id", self.question_id).single().execute()
-        question_data = question_response.data if question_response.data else {}
+        question_data = {}
+        if self.question_id:
+            question_response = supabase.table("research_questions").select("*").eq("id", self.question_id).single().execute()
+            question_data = question_response.data if question_response.data else {}
+
+        # Fetch simple questions if no research question ID
+        simple_questions = []
+        if not self.question_id:
+            q_response = supabase.table("questions").select("*").eq("study_id", self.study_id).order("order_index").execute()
+            simple_questions = q_response.data or []
 
         # Build conversation history for question agent
         conversation_turns = []
@@ -67,10 +80,22 @@ class SimpleInterviewSession:
 
         # Determine the question text
         if len(self.conversation_history) == 0:
-            # First question - use root question
-            question_text = question_data.get("root_question", "Tell me about your experience.")
+            # First question - use root question or first simple question
+            print(f"[Question Agent] This is the FIRST question")
+            if question_data.get("root_question"):
+                question_text = question_data.get("root_question")
+                print(f"[Question Agent] Using root question: {question_text}")
+            elif simple_questions and len(simple_questions) > 0:
+                question_text = simple_questions[0]["text"]
+                print(f"[Question Agent] Using first simple question: {question_text}")
+            else:
+                question_text = "Tell me about your experience."
+                print(f"[Question Agent] Using default question: {question_text}")
         else:
             # Call question agent to generate next question
+            print(f"[Question Agent] Calling Question Agent to generate follow-up question...")
+            print(f"[Question Agent] Conversation history has {len(conversation_turns)} turns")
+
             from routers.question import get_next_question, QuestionRequest, ConversationTurn
 
             request = QuestionRequest(
@@ -84,8 +109,10 @@ class SimpleInterviewSession:
                 badQuestions=[]
             )
 
+            print(f"[Question Agent] Sending request to Question Agent...")
             question_response = await get_next_question(request)
             question_text = question_response.text
+            print(f"[Question Agent] ✅ Question Agent returned: {question_text}")
 
         self.current_question = question_text
 
@@ -116,18 +143,24 @@ class SimpleInterviewSession:
             print(f"[TTS] Generated {len(audio_bytes)} bytes of audio ({len(audio_base64)} base64)")
 
             # Send complete audio to client
+            print(f"[TTS] Sending audio_complete message to client...")
             await self.client_ws.send_json({
                 "type": "audio_complete",
                 "data": audio_base64,
                 "format": "opus"  # Tell client what format this is
             })
+            print(f"[TTS] ✅ Audio_complete message sent successfully")
 
             # Start listening for response
             self.is_listening = True
             self.audio_buffer = []
+            print(f"[TTS] ✅ Now listening for user response (is_listening={self.is_listening})")
+            print(f"\n{'='*80}")
+            print(f"[System] READY FOR USER RESPONSE - Waiting for audio from frontend...")
+            print(f"{'='*80}\n")
 
         except Exception as e:
-            print(f"[TTS] Error generating audio: {e}")
+            print(f"[TTS] ❌ Error generating audio: {e}")
             import traceback
             traceback.print_exc()
             await self.client_ws.send_json({
@@ -145,6 +178,12 @@ class SimpleInterviewSession:
 
         # Stop listening immediately
         self.is_listening = False
+
+        # Handle skip/empty audio
+        if not audio_data or len(audio_data) < 100:
+            print("[Audio] Empty or skip audio - moving to next question")
+            await self.handle_transcript("[SKIPPED]")
+            return
 
         try:
             # Decode base64 audio
@@ -229,19 +268,23 @@ class SimpleInterviewSession:
             "text": transcript
         })
 
-        # Call quality agent to score the Q&A
+        # Call quality agent to score the Q&A (don't block on errors)
         print(f"[Transcript] Scoring Q&A turn...")
-        await self.score_qa(qa_turn_id, transcript)
+        try:
+            await self.score_qa(qa_turn_id, transcript)
+        except Exception as e:
+            print(f"[Transcript] Quality scoring failed but continuing: {e}")
 
         # Check if interview should end
         should_end = await self.should_end_interview()
         print(f"[Transcript] Should end interview? {should_end}")
 
         if should_end:
+            print(f"[Transcript] Interview complete after {len(self.conversation_history)} turns")
             await self.end_interview()
         else:
             # Get and speak next question
-            print(f"[Transcript] Getting next question...")
+            print(f"[Transcript] ✅ Getting next question (turn {len(self.conversation_history) + 1})...")
             await self.get_and_speak_next_question()
 
     async def score_qa(self, qa_turn_id: str, answer_text: str):
@@ -332,16 +375,16 @@ async def simple_interview_websocket(websocket: WebSocket, session_id: str):
                 question_id = assignment_response.data[0]["research_question_id"]
                 supabase.table("interview_sessions").update({"research_question_id": question_id}).eq("id", session_id).execute()
             else:
-                await websocket.send_json({"type": "error", "message": "No research question found for this participant"})
-                await websocket.close()
-                return
+                # Allow proceeding without a specific research question ID (will fallback to study questions)
+                print(f"No research question assignment found for participant {session_data['participant_id']}, proceeding with general study questions.")
+                question_id = None
 
         # Create interview session
         interview = SimpleInterviewSession(
             session_id=session_id,
             study_id=session_data["study_id"],
-            question_id=question_id,
-            participant_id=session_data["participant_id"]
+            participant_id=session_data["participant_id"],
+            question_id=question_id
         )
 
         # Start the interview

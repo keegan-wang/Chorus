@@ -37,11 +37,20 @@ export function useAudioRecorder({
   const lastSpeechStateRef = useRef<boolean>(false);
 
   const startRecording = useCallback(async () => {
+    console.log('[Recorder] 🎬 startRecording called, isRecording =', isRecording);
+
+    if (isRecording) {
+      console.log('[Recorder] Already recording, ignoring start request');
+      return;
+    }
+
     try {
+      console.log('[Recorder] Resetting state and requesting microphone...');
       // Reset state
       audioChunksRef.current = [];
       hasSpeechRef.current = false;
       lastSpeechStateRef.current = false;
+      lastSoundTimeRef.current = Date.now(); // Reset to current time so silence detection starts fresh
 
       // Request microphone access
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -78,10 +87,12 @@ export function useAudioRecorder({
 
         // Check if there's sound above threshold
         if (rms > silenceThreshold) {
-          lastSoundTimeRef.current = Date.now();
+          const now = Date.now();
+          lastSoundTimeRef.current = now;
           if (!hasSpeechRef.current) {
             hasSpeechRef.current = true;
             console.log('[Recorder] 🎤 Speech detected - started recording audio');
+            console.log(`[Recorder] Debug: RMS=${rms.toFixed(4)}, threshold=${silenceThreshold}, time=${now}`);
           }
           // Trigger speech detected callback on every frame with speech
           if (!lastSpeechStateRef.current) {
@@ -110,22 +121,24 @@ export function useAudioRecorder({
         audioChunksRef.current.push(pcm16);
       };
 
-      // Start silence detection interval
-      silenceCheckIntervalRef.current = setInterval(() => {
-        const timeSinceLastSound = Date.now() - lastSoundTimeRef.current;
+      // Start silence detection interval (with a small delay to let audio processing start)
+      setTimeout(() => {
+        silenceCheckIntervalRef.current = setInterval(() => {
+          const timeSinceLastSound = Date.now() - lastSoundTimeRef.current;
 
-        // Update speech state based on recent activity
-        const isSpeaking = timeSinceLastSound < 200; // Consider speaking if sound within last 200ms
-        if (isSpeaking !== lastSpeechStateRef.current) {
-          lastSpeechStateRef.current = isSpeaking;
-          if (isSpeaking) {
-            onSpeechDetected?.();
+          // Update speech state based on recent activity
+          const isSpeaking = timeSinceLastSound < 200; // Consider speaking if sound within last 200ms
+          if (isSpeaking !== lastSpeechStateRef.current) {
+            lastSpeechStateRef.current = isSpeaking;
+            if (isSpeaking) {
+              onSpeechDetected?.();
+            }
           }
-        }
 
-        // Check for silence after speech
-        if (hasSpeechRef.current && timeSinceLastSound > silenceDuration) {
-          console.log(`[Recorder] 🔇 Silence detected after speech (${(silenceDuration/1000).toFixed(1)}s) - processing complete recording`);
+          // Check for silence after speech (only if we've actually detected speech)
+          if (hasSpeechRef.current && timeSinceLastSound > silenceDuration) {
+            console.log(`[Recorder] 🔇 Silence detected after speech (${(silenceDuration/1000).toFixed(1)}s) - processing complete recording`);
+            console.log(`[Recorder] Debug: timeSinceLastSound=${timeSinceLastSound}ms, silenceDuration=${silenceDuration}ms, hasSpeech=${hasSpeechRef.current}`);
           hasSpeechRef.current = false;
           lastSpeechStateRef.current = false;
           setIsSpeechDetected(false);
@@ -149,7 +162,8 @@ export function useAudioRecorder({
           // Send complete recording
           onRecordingComplete?.(base64Audio);
         }
-      }, 100); // Check every 100ms for more responsive UI
+        }, 100); // Check every 100ms for more responsive UI
+      }, 500); // Wait 500ms before starting silence detection
 
       source.connect(processor);
       processor.connect(audioContext.destination);
@@ -164,6 +178,31 @@ export function useAudioRecorder({
   }, [silenceThreshold, silenceDuration, onSpeechDetected, onRecordingComplete, onError]);
 
   const stopRecording = useCallback(() => {
+    console.log('[Recorder] 🛑 stopRecording called');
+    console.log('[Recorder] Audio chunks buffered:', audioChunksRef.current.length);
+
+    // ALWAYS send audio if there are chunks, regardless of speech detection
+    if (audioChunksRef.current.length > 0) {
+      const totalLength = audioChunksRef.current.reduce((acc, chunk) => acc + chunk.length, 0);
+      const combinedAudio = new Int16Array(totalLength);
+      let offset = 0;
+      for (const chunk of audioChunksRef.current) {
+        combinedAudio.set(chunk, offset);
+        offset += chunk.length;
+      }
+
+      const base64Audio = arrayBufferToBase64(combinedAudio.buffer);
+      console.log(`[Recorder] ✅ Sending ${combinedAudio.length} samples (${(combinedAudio.length / 24000).toFixed(2)}s)`);
+
+      // Clear chunks
+      audioChunksRef.current = [];
+
+      // Send the recording
+      onRecordingComplete?.(base64Audio);
+    } else {
+      console.log('[Recorder] ⚠️ No audio chunks to send');
+    }
+
     // Clear silence detection interval
     if (silenceCheckIntervalRef.current) {
       clearInterval(silenceCheckIntervalRef.current);
@@ -194,14 +233,26 @@ export function useAudioRecorder({
     lastSoundTimeRef.current = Date.now();
 
     setIsRecording(false);
-  }, []);
+  }, [onRecordingComplete]);
 
-  // Clean up on unmount
+  // Clean up on unmount ONLY
   useEffect(() => {
     return () => {
-      stopRecording();
+      // Clean up without calling stopRecording to avoid triggering callbacks
+      if (silenceCheckIntervalRef.current) {
+        clearInterval(silenceCheckIntervalRef.current);
+      }
+      if (processorRef.current) {
+        processorRef.current.disconnect();
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close();
+      }
+      if (mediaStreamRef.current) {
+        mediaStreamRef.current.getTracks().forEach(track => track.stop());
+      }
     };
-  }, [stopRecording]);
+  }, []); // Empty deps - only run on mount/unmount
 
   return {
     isRecording,

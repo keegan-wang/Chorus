@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
+import { studiesApi } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/components/ui/use-toast';
@@ -15,7 +16,7 @@ interface Study {
   description: string | null;
   type: string;
   status: string;
-  target_participants: number;
+  target_participant_count: number;
   created_at: string;
   interview_config: {
     max_follow_ups: number;
@@ -60,14 +61,11 @@ export default function StudyDetailPage() {
       const studyId = params.id as string;
 
       // Fetch study details
-      const { data: studyData, error: studyError } = await supabase
-        .from('studies')
-        .select('*')
-        .eq('id', studyId)
-        .single();
-
-      if (studyError) {
-        console.error('Error fetching study:', studyError);
+      try {
+        const studyData = await studiesApi.get(studyId);
+        setStudy(studyData);
+      } catch (error) {
+        console.error('Error fetching study:', error);
         toast({
           variant: 'destructive',
           title: 'Error',
@@ -76,8 +74,6 @@ export default function StudyDetailPage() {
         router.push('/studies');
         return;
       }
-
-      setStudy(studyData);
 
       // Fetch questions
       const { data: questionsData } = await supabase
@@ -88,45 +84,18 @@ export default function StudyDetailPage() {
 
       setQuestions(questionsData || []);
 
-      // Fetch stats
-      const { count: participantCount } = await supabase
-        .from('participants')
-        .select('*', { count: 'exact', head: true })
-        .eq('study_id', studyId);
-
-      const { data: sessionsData } = await supabase
-        .from('sessions')
-        .select('id, duration_seconds')
-        .eq('study_id', studyId)
-        .eq('status', 'completed');
-
-      const completedCount = sessionsData?.length || 0;
-      const avgDuration =
-        completedCount > 0
-          ? Math.round(
-              sessionsData!.reduce((acc, s) => acc + (s.duration_seconds || 0), 0) /
-                completedCount
-            )
-          : 0;
-
-      // Fetch quality scores
-      const { data: qualityData } = await supabase
-        .from('quality_labels')
-        .select('overall_score, sessions!inner(study_id)')
-        .eq('sessions.study_id', studyId);
-
-      const avgQuality =
-        qualityData && qualityData.length > 0
-          ? qualityData.reduce((acc, q) => acc + q.overall_score, 0) /
-            qualityData.length
-          : 0;
-
-      setStats({
-        totalParticipants: participantCount || 0,
-        completedInterviews: completedCount,
-        avgDuration,
-        avgQualityScore: Math.round(avgQuality * 10) / 10,
-      });
+      // Fetch stats (via API to avoid RLS in dev)
+      try {
+        const statsData = await studiesApi.getStats(studyId);
+        setStats({
+          totalParticipants: statsData.participantCount || 0,
+          completedInterviews: statsData.completedCount || 0,
+          avgDuration: statsData.avgDuration || 0,
+          avgQualityScore: statsData.avgQuality || 0,
+        });
+      } catch (error) {
+        console.error('Error fetching study stats:', error);
+      }
 
       setIsLoading(false);
     }
@@ -137,13 +106,10 @@ export default function StudyDetailPage() {
   async function updateStudyStatus(newStatus: string) {
     if (!study) return;
 
-    const supabase = createClient();
-    const { error } = await supabase
-      .from('studies')
-      .update({ status: newStatus })
-      .eq('id', study.id);
-
-    if (error) {
+    try {
+      await studiesApi.update(study.id, { status: newStatus });
+    } catch (error) {
+      console.error('Error updating study status:', error);
       toast({
         variant: 'destructive',
         title: 'Error',
@@ -245,7 +211,7 @@ export default function StudyDetailPage() {
           </CardHeader>
           <CardContent>
             <p className="text-xs text-muted-foreground">
-              Target: {formatNumber(study.target_participants)}
+              Target: {formatNumber(study.target_participant_count)}
             </p>
           </CardContent>
         </Card>
@@ -356,6 +322,11 @@ export default function StudyDetailPage() {
               <Link href={`/studies/${study.id}/import`} className="block">
                 <Button variant="outline" className="w-full justify-start">
                   Import Participants
+                </Button>
+              </Link>
+              <Link href={`/studies/${study.id}/analysis`} className="block">
+                <Button variant="default" className="w-full justify-start">
+                  📊 Analyze Study
                 </Button>
               </Link>
               <Link href={`/studies/${study.id}/report`} className="block">

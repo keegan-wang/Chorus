@@ -23,7 +23,13 @@
       "Bash(pip install:*)",
       "Skill(systematic-debugging)",
       "Bash(python -m py_compile:*)",
-      "Skill(verification-before-completion)"
+      "Skill(verification-before-completion)",
+      "Bash(find:*)",
+      "Bash(curl:*)",
+      "Bash(node -e \"require\\(''dotenv''\\).config\\({path: ''/Users/keegan/Documents/GitHub/Chorus/apps/web/.env.local''}\\); eval\\(require\\(''fs''\\).readFileSync\\(''/dev/stdin'', ''utf8''\\)\\)\")",
+      "Bash(psql:*)",
+      "Bash(kill:*)",
+      "Bash(ps:*)"
     ]
   }
 }

@@ -25,7 +25,11 @@ export class StudiesController {
   @Post()
   @ApiOperation({ summary: 'Create a new study' })
   async create(@Request() req, @Body() createStudyDto: CreateStudyDto) {
-    return this.studiesService.create(req.user.organizationId, createStudyDto);
+    return this.studiesService.create(
+      req.user.organizationId,
+      createStudyDto,
+      req.user.userId
+    );
   }
 
   @Get()
@@ -78,5 +82,17 @@ export class StudiesController {
   @ApiOperation({ summary: 'Mark a study as completed' })
   async complete(@Request() req, @Param('id') id: string) {
     return this.studiesService.updateStatus(req.user.organizationId, id, 'completed');
+  }
+
+  @Post(':id/analyze')
+  @ApiOperation({ summary: 'Generate AI analysis for a study' })
+  async analyze(@Request() req, @Param('id') id: string) {
+    return this.studiesService.analyzeStudy(req.user.organizationId, id);
+  }
+
+  @Get(':id/analysis')
+  @ApiOperation({ summary: 'Get existing analysis for a study' })
+  async getAnalysis(@Request() req, @Param('id') id: string) {
+    return this.studiesService.getAnalysis(req.user.organizationId, id);
   }
 }

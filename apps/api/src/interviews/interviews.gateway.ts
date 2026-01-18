@@ -65,34 +65,45 @@ export class InterviewsGateway implements OnGatewayConnection, OnGatewayDisconne
   ) {
     const { sessionId } = data;
 
+    console.log(`[Gateway] Starting realtime interview for session ${sessionId}`);
+
     try {
       // Connect to Python agents WebSocket endpoint (simple interview)
       const agentsUrl = process.env.AGENTS_API_URL || 'http://localhost:8000';
       const wsUrl = agentsUrl.replace('http', 'ws');
+      console.log(`[Gateway] Connecting to Python WebSocket: ${wsUrl}/api/agents/simple-interview/${sessionId}`);
       const ws = new WebSocket(`${wsUrl}/api/agents/simple-interview/${sessionId}`);
 
       // Store the connection
       this.agentsWsConnections.set(sessionId, ws);
+      console.log(`[Gateway] WebSocket connection stored for session ${sessionId}`);
 
       // Forward messages from agents to client
       ws.on('message', (message: string) => {
         try {
           const data = JSON.parse(message);
+          console.log(`[Gateway] Received message from Python: type=${data.type}, dataLength=${data.data?.length || 'N/A'}`);
           client.emit('realtime-message', data);
+          console.log(`[Gateway] ✅ Forwarded message to client`);
         } catch (e) {
           console.error('Error parsing message from agents:', e);
         }
       });
 
       ws.on('error', (error) => {
-        console.error('WebSocket error:', error);
+        console.error(`[Gateway] WebSocket error for session ${sessionId}:`, error);
         client.emit('realtime-error', { message: error.message });
       });
 
-      ws.on('close', () => {
-        console.log(`Agents WebSocket closed for session ${sessionId}`);
+      ws.on('close', (code: number, reason: Buffer) => {
+        const reasonStr = reason.toString();
+        console.log(`[Gateway] Agents WebSocket closed for session ${sessionId}, code=${code}, reason=${reasonStr || 'none'}`);
         this.agentsWsConnections.delete(sessionId);
         client.emit('realtime-closed');
+      });
+
+      ws.on('open', () => {
+        console.log(`[Gateway] ✅ WebSocket connection opened for session ${sessionId}`);
       });
 
       // Wait for connection to open

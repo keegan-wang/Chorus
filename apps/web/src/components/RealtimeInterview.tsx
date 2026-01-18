@@ -10,10 +10,9 @@ interface RealtimeInterviewProps {
 
 export function RealtimeInterview({ sessionId }: RealtimeInterviewProps) {
   const [transcript, setTranscript] = useState<string[]>([]);
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const [silenceCountdown, setSilenceCountdown] = useState<number | null>(null);
   const [aiIsSpeaking, setAiIsSpeaking] = useState(false);
   const [audioReceived, setAudioReceived] = useState(false);
+  const [isGeneratingQuestion, setIsGeneratingQuestion] = useState(false);
 
   const aiIsSpeakingRef = useRef(false);
 
@@ -29,29 +28,17 @@ export function RealtimeInterview({ sessionId }: RealtimeInterviewProps) {
   } = useRealtimeInterview({
     sessionId,
     onQuestion: (questionText) => {
-      console.log('[Question] New question received:', questionText);
+      console.log('[Question] New question:', questionText);
+      console.log('[UI] Setting isGeneratingQuestion = false, aiIsSpeaking = true');
       setTranscript(prev => [...prev, `Interviewer: ${questionText}`]);
       aiIsSpeakingRef.current = true;
       setAiIsSpeaking(true);
-      setIsSpeaking(false);
-      setSilenceCountdown(null);
       setAudioReceived(false);
-
-      // Make sure recording is stopped while AI speaks
-      if (isRecording) {
-        console.log('[Question] Stopping recording - AI is about to speak');
-        stopRecording();
-      }
+      setIsGeneratingQuestion(false);
     },
     onTranscript: (text) => {
-      console.log('Participant response:', text);
+      console.log('[Transcript] Your response:', text);
       setTranscript(prev => [...prev, `You: ${text}`]);
-      setIsSpeaking(false);
-      setSilenceCountdown(null);
-
-      // Stop recording while waiting for next question
-      console.log('[Interview] Stopping recording after transcript received');
-      stopRecording();
     },
     onAudioComplete: (audioData) => {
       console.log(`[Audio] ✅ Complete audio received (${audioData.length} bytes base64) - WILL START PLAYING NOW`);
@@ -67,14 +54,17 @@ export function RealtimeInterview({ sessionId }: RealtimeInterviewProps) {
       console.log(`[Audio] Question will play for ~${durationSeconds.toFixed(2)}s`);
     },
     onAudioPlaybackFinished: () => {
-      console.log('[Audio] ✅ Playback COMPLETELY finished - NOW you can speak');
+      console.log('[Audio] ✅ Playback finished - NOW starting recording for your answer');
+      console.log('[Audio] State check: isInterviewActive =', isInterviewActive, ', isRecording =', isRecording);
       aiIsSpeakingRef.current = false;
       setAiIsSpeaking(false);
 
-      // Restart recording for next answer
+      // Automatically start recording after question finishes playing
       if (isInterviewActive && !isRecording) {
-        console.log('[Audio] Starting recording NOW - your turn to speak!');
+        console.log('[Audio] ✅ Auto-starting recording for user response');
         startRecording();
+      } else {
+        console.log('[Audio] ❌ NOT starting recording: isInterviewActive =', isInterviewActive, ', isRecording =', isRecording);
       }
     },
     onInterviewComplete: () => {
@@ -82,26 +72,6 @@ export function RealtimeInterview({ sessionId }: RealtimeInterviewProps) {
     },
     onError: (error) => {
       console.error('Interview error:', error);
-    },
-    onSpeechStarted: () => {
-      // Ignore VAD events while AI is speaking (prevents feedback loop)
-      if (aiIsSpeakingRef.current) {
-        console.log('[VAD] Ignoring speech_started - AI is speaking');
-        return;
-      }
-      console.log('Speech started');
-      setIsSpeaking(true);
-      setSilenceCountdown(null);
-    },
-    onSpeechStopped: () => {
-      // Ignore VAD events while AI is speaking (prevents feedback loop)
-      if (aiIsSpeakingRef.current) {
-        console.log('[VAD] Ignoring speech_stopped - AI is speaking');
-        return;
-      }
-      console.log('Speech stopped');
-      setIsSpeaking(false);
-      setSilenceCountdown(3); // Start 3 second countdown
     },
   });
 
@@ -113,65 +83,30 @@ export function RealtimeInterview({ sessionId }: RealtimeInterviewProps) {
     isSpeechDetected,
   } = useAudioRecorder({
     onRecordingComplete: (audioData) => {
-      if (isInterviewActive && !aiIsSpeaking) {
-        console.log('[Recorder] Sending complete recording to backend');
-        setIsSpeaking(false);
-        setSilenceCountdown(null);
-        // Send the complete audio as one message
-        sendAudio(audioData);
-        // Signal that we're done
-        stopListening();
-        // Stop recording until next question
-        stopRecording();
-      }
-    },
-    onSpeechDetected: () => {
-      if (isInterviewActive && !aiIsSpeaking && isRecording) {
-        console.log('[UI] User is speaking - updating visual indicator');
-        setIsSpeaking(true);
-        setSilenceCountdown(null);
-      }
+      console.log('[Recorder] ✅ Recording complete, sending to backend');
+      console.log('[UI] Setting isGeneratingQuestion = true');
+      setIsGeneratingQuestion(true);
+      sendAudio(audioData);
+      stopListening();
     },
     onError: (error) => {
       console.error('Recorder error:', error);
     },
-    silenceThreshold: 0.015, // Lower threshold = more sensitive to detect silence
-    silenceDuration: 3000, // 3 seconds of silence before considering speech done
+    onSpeechDetected: (detected) => {
+      // Visual feedback for speech detection
+      console.log(`[Speech] ${detected ? 'Started' : 'Stopped'} speaking`);
+    },
+    // Keep speech detection active for visual feedback, but disable auto-stop
+    silenceThreshold: 0.015, // Detect speech
+    silenceDuration: 999999, // Never auto-stop (very long duration)
   });
 
-  // Countdown timer effect
-  useEffect(() => {
-    if (silenceCountdown === null || silenceCountdown === 0) return;
-
-    const timer = setInterval(() => {
-      setSilenceCountdown(prev => {
-        if (prev === null || prev <= 1) return null;
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [silenceCountdown]);
-
-  // Start recording when interview starts, stop when it ends
-  // Don't auto-restart - only restart after AI finishes speaking
-  useEffect(() => {
-    console.log(`[Interview] State check - isInterviewActive: ${isInterviewActive}, isRecording: ${isRecording}, aiIsSpeaking: ${aiIsSpeaking}`);
-
-    if (isInterviewActive && !isRecording && !aiIsSpeaking) {
-      console.log('[Interview] Starting recording (interview active, not recording, AI not speaking)...');
-      startRecording();
-    } else if (!isInterviewActive && isRecording) {
-      console.log('[Interview] Stopping recording (interview ended)...');
-      stopRecording();
-    }
-  }, [isInterviewActive, isRecording, aiIsSpeaking, startRecording, stopRecording]);
+  // No useEffect needed - explicit control only
 
   const handleStart = async () => {
     try {
-      console.log('[Interview] handleStart called');
+      console.log('[Interview] Starting interview');
       await startInterview();
-      console.log('[Interview] startInterview completed');
     } catch (err) {
       console.error('Failed to start interview:', err);
     }
@@ -232,6 +167,17 @@ export function RealtimeInterview({ sessionId }: RealtimeInterviewProps) {
         </div>
       )}
 
+      {/* Debug State Display */}
+      {isInterviewActive && (
+        <div className="mb-4 p-3 bg-gray-100 border border-gray-300 rounded text-xs font-mono">
+          <div className="font-bold mb-1">Debug State:</div>
+          <div>isGeneratingQuestion: {isGeneratingQuestion ? '✅ true' : '❌ false'}</div>
+          <div>aiIsSpeaking: {aiIsSpeaking ? '✅ true' : '❌ false'}</div>
+          <div>isRecording: {isRecording ? '✅ true' : '❌ false'}</div>
+          <div>audioReceived: {audioReceived ? '✅ true' : '❌ false'}</div>
+        </div>
+      )}
+
       {/* Controls */}
       <div className="mb-6 flex gap-4">
         {!isInterviewActive ? (
@@ -260,6 +206,30 @@ export function RealtimeInterview({ sessionId }: RealtimeInterviewProps) {
         )}
       </div>
 
+      {/* Generating Question Indicator */}
+      {isInterviewActive && isGeneratingQuestion && !aiIsSpeaking && (
+        <div className="mb-6 p-6 bg-gradient-to-r from-purple-50 to-pink-50 border-2 border-purple-300 rounded-lg shadow-md">
+          {console.log('[UI] Rendering "Thinking of next question" indicator')}
+          <div className="flex items-center gap-4">
+            <div className="relative">
+              <div className="w-16 h-16 rounded-full bg-purple-500 animate-spin shadow-lg shadow-purple-500/50 flex items-center justify-center">
+                <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                </svg>
+              </div>
+            </div>
+            <div className="flex-1">
+              <p className="font-bold text-lg text-purple-700">
+                🤔 Thinking of next question...
+              </p>
+              <p className="text-sm text-purple-600">
+                AI is analyzing your response
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* AI Speaking Indicator */}
       {isInterviewActive && aiIsSpeaking && (
         <div className="mb-6 p-6 bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-300 rounded-lg shadow-md">
@@ -284,76 +254,60 @@ export function RealtimeInterview({ sessionId }: RealtimeInterviewProps) {
         </div>
       )}
 
-      {/* Voice Activity Detection UI */}
-      {isInterviewActive && !aiIsSpeaking && (
-        <div className="mb-6 p-6 bg-gradient-to-r from-purple-50 to-blue-50 border-2 border-purple-200 rounded-lg shadow-md">
+      {/* Recording Controls */}
+      {isInterviewActive && !aiIsSpeaking && !isGeneratingQuestion && (
+        <div className="mb-6 p-6 bg-gradient-to-r from-green-50 to-blue-50 border-2 border-green-200 rounded-lg shadow-md">
           <div className="flex items-center justify-between">
-            {/* Voice Detection Indicator */}
             <div className="flex items-center gap-4">
-              <div className="relative">
-                <div className={`w-16 h-16 rounded-full flex items-center justify-center transition-all duration-300 ${
-                  isSpeechDetected
-                    ? 'bg-green-500 animate-pulse shadow-lg shadow-green-500/50'
-                    : 'bg-gray-300'
-                }`}>
-                  <svg
-                    className={`w-8 h-8 ${isSpeechDetected ? 'text-white' : 'text-gray-500'}`}
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                  >
-                    <path d="M7 4a3 3 0 016 0v6a3 3 0 11-6 0V4z" />
-                    <path d="M5.5 9.643a.75.75 0 00-1.5 0V10c0 3.06 2.29 5.585 5.25 5.954V17.5h-1.5a.75.75 0 000 1.5h4.5a.75.75 0 000-1.5h-1.5v-1.546A6.001 6.001 0 0016 10v-.357a.75.75 0 00-1.5 0V10a4.5 4.5 0 01-9 0v-.357z" />
-                  </svg>
-                </div>
-                {isSpeechDetected && (
-                  <div className="absolute inset-0 rounded-full border-4 border-green-400 animate-ping" />
-                )}
-              </div>
+              {isRecording && (
+                <div className={`w-4 h-4 rounded-full ${isSpeechDetected ? 'bg-green-500 animate-pulse' : 'bg-red-500 animate-pulse'}`} />
+              )}
               <div>
-                <p className={`font-bold text-lg transition-colors ${
-                  isSpeechDetected ? 'text-green-700' : 'text-gray-600'
-                }`}>
-                  {isSpeechDetected ? 'Listening to you...' : 'Speak your answer'}
+                <p className="font-bold text-lg text-gray-700">
+                  {isRecording ? '🎤 Recording your answer...' : 'Ready to record'}
                 </p>
                 <p className="text-sm text-gray-500">
-                  {isSpeechDetected ? 'We can hear you!' : 'Start speaking to respond'}
+                  {isRecording ? 'Click "Stop Recording" when you finish speaking' : 'Recording will start automatically after question'}
                 </p>
               </div>
             </div>
 
-            {/* Countdown Timer */}
-            {silenceCountdown !== null && (
-              <div className="flex flex-col items-center">
-                <div className="relative w-20 h-20">
-                  <svg className="w-20 h-20 transform -rotate-90">
-                    <circle
-                      cx="40"
-                      cy="40"
-                      r="34"
-                      stroke="#e5e7eb"
-                      strokeWidth="6"
-                      fill="none"
-                    />
-                    <circle
-                      cx="40"
-                      cy="40"
-                      r="34"
-                      stroke="#f59e0b"
-                      strokeWidth="6"
-                      fill="none"
-                      strokeLinecap="round"
-                      strokeDasharray={`${2 * Math.PI * 34}`}
-                      strokeDashoffset={`${2 * Math.PI * 34 * (1 - silenceCountdown / 3)}`}
-                      className="transition-all duration-1000 ease-linear"
-                    />
+            <div className="flex gap-3">
+              {!isRecording ? (
+                <>
+                  <button
+                    onClick={startRecording}
+                    className="px-6 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center gap-2"
+                  >
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M7 4a3 3 0 016 0v6a3 3 0 11-6 0V4z" />
+                      <path d="M5.5 9.643a.75.75 0 00-1.5 0V10c0 3.06 2.29 5.585 5.25 5.954V17.5h-1.5a.75.75 0 000 1.5h4.5a.75.75 0 000-1.5h-1.5v-1.546A6.001 6.001 0 0016 10v-.357a.75.75 0 00-1.5 0V10a4.5 4.5 0 01-9 0v-.357z" />
+                    </svg>
+                    Start Recording
+                  </button>
+                  <button
+                    onClick={() => {
+                      console.log('[Manual] Requesting next question');
+                      // Send empty audio to trigger next question
+                      sendAudio('');
+                    }}
+                    className="px-4 py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-700 transition-colors text-sm"
+                  >
+                    ⏭️ Skip / Next Question
+                  </button>
+                </>
+              ) : (
+                <button
+                  onClick={stopRecording}
+                  className="px-6 py-3 bg-red-600 text-white rounded-lg font-medium hover:bg-red-700 transition-colors flex items-center gap-2"
+                >
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <rect x="6" y="6" width="8" height="8" rx="1" />
                   </svg>
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <span className="text-2xl font-bold text-amber-600">{silenceCountdown}</span>
-                  </div>
-                </div>
-                <p className="text-xs text-amber-600 font-medium mt-1">Processing...</p>
-              </div>
-            )}
+                  Stop Recording
+                </button>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -395,11 +349,12 @@ export function RealtimeInterview({ sessionId }: RealtimeInterviewProps) {
       <div className="mt-6 p-4 bg-gray-50 rounded-lg">
         <h3 className="text-sm font-semibold text-gray-700 mb-2">How it works:</h3>
         <ol className="text-sm text-gray-600 space-y-1 list-decimal list-inside">
-          <li>Click "Start Interview" to begin the conversational interview</li>
-          <li>The AI interviewer will ask you questions based on your research topic</li>
-          <li>Speak your answers naturally - the system will automatically detect when you're done</li>
-          <li>The conversation will continue until all questions are answered</li>
-          <li>Click "End Interview" at any time to finish early</li>
+          <li>Click "Start Interview" to begin</li>
+          <li>Listen to the question</li>
+          <li>Click "Start Recording" when ready to answer</li>
+          <li>Speak your answer</li>
+          <li>Click "Stop Recording" when done</li>
+          <li>Wait for the next question - repeat steps 2-5</li>
         </ol>
       </div>
     </div>

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
+import { studiesApi } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { formatNumber } from '@/lib/utils';
@@ -11,9 +12,9 @@ interface Study {
   id: string;
   title: string;
   description: string | null;
-  type: string;
+  research_intent?: { type?: string; goals?: string };
   status: string;
-  target_participants: number;
+  target_participant_count: number;
   created_at: string;
   _count?: {
     participants: number;
@@ -27,53 +28,24 @@ export default function StudiesPage() {
 
   useEffect(() => {
     async function fetchStudies() {
-      const supabase = createClient();
+      try {
+        console.log('[Studies] Fetching studies via API...');
 
-      const { data: studiesData, error } = await supabase
-        .from('studies')
-        .select(`
-          id,
-          title,
-          description,
-          type,
-          status,
-          target_participants,
-          created_at
-        `)
-        .order('created_at', { ascending: false });
+        // Use the API instead of direct Supabase to bypass RLS in dev mode
+        const studiesData = await studiesApi.list();
 
-      if (error) {
+        console.log('[Studies] Found studies:', studiesData?.length || 0);
+
+        // The API returns studies with counts
+        const studiesArray = Array.isArray(studiesData) ? studiesData : [];
+
+        setStudies(studiesArray);
+
+      } catch (error) {
         console.error('Error fetching studies:', error);
+      } finally {
         setIsLoading(false);
-        return;
       }
-
-      // Fetch participant counts for each study
-      const studiesWithCounts = await Promise.all(
-        (studiesData || []).map(async (study) => {
-          const { count: participantCount } = await supabase
-            .from('participants')
-            .select('*', { count: 'exact', head: true })
-            .eq('study_id', study.id);
-
-          const { count: completedCount } = await supabase
-            .from('sessions')
-            .select('*', { count: 'exact', head: true })
-            .eq('study_id', study.id)
-            .eq('status', 'completed');
-
-          return {
-            ...study,
-            _count: {
-              participants: participantCount || 0,
-              completed: completedCount || 0,
-            },
-          };
-        })
-      );
-
-      setStudies(studiesWithCounts);
-      setIsLoading(false);
     }
 
     fetchStudies();

@@ -12,8 +12,28 @@ export class AgentsService {
     private httpService: HttpService,
     private configService: ConfigService,
   ) {
-    this.agentsBaseUrl =
+    const configuredUrl =
       this.configService.get<string>('AGENTS_API_URL') || 'http://localhost:8000';
+    // Normalize to avoid double /api or /api/agents in requests.
+    let normalized = configuredUrl.replace(/\/+$/, '');
+    if (normalized.endsWith('/api/agents')) {
+      normalized = normalized.slice(0, -'/api/agents'.length);
+    } else if (normalized.endsWith('/api')) {
+      normalized = normalized.slice(0, -'/api'.length);
+    }
+    this.agentsBaseUrl = normalized;
+  }
+
+  private getAgentErrorMessage(error: unknown, fallback: string): string {
+    const axiosError = error as { response?: { data?: any; status?: number } };
+    const detail = axiosError?.response?.data?.detail;
+    if (typeof detail === 'string' && detail.trim().length > 0) {
+      return detail;
+    }
+    if (axiosError?.response?.status) {
+      return `${fallback} (status ${axiosError.response.status})`;
+    }
+    return fallback;
   }
 
   async getNextQuestion(params: {
@@ -113,7 +133,30 @@ export class AgentsService {
       return response.data;
     } catch (error) {
       console.error('Error generating study report:', error);
-      return null;
+      throw new Error(this.getAgentErrorMessage(error, 'Overview generation failed'));
+    }
+  }
+
+  // Alias for generateStudyReport
+  async generateStudyOverview(params: { studyId: string }): Promise<any> {
+    return this.generateStudyReport(params.studyId);
+  }
+
+  async generateAggregateSummary(params: {
+    researchQuestionId: string;
+    recompute?: boolean;
+  }): Promise<any> {
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post(`${this.agentsBaseUrl}/api/agents/aggregate-summary`, {
+          research_question_id: params.researchQuestionId,
+          recompute: params.recompute || false,
+        }),
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Error generating aggregate summary:', error);
+      throw new Error(this.getAgentErrorMessage(error, 'Aggregate summary generation failed'));
     }
   }
 
@@ -131,6 +174,28 @@ export class AgentsService {
       console.error('Error selecting avatar:', error);
       // Fallback: return first available avatar
       return params.availableAvatars[0] || null;
+    }
+  }
+
+  async selectParticipants(params: {
+    studyId: string;
+    targetCount: number;
+    targetDemographics: any;
+    studyContext: any;
+  }): Promise<any> {
+    try {
+      const response = await firstValueFrom(
+        this.httpService.post(`${this.agentsBaseUrl}/api/agents/participant-selection`, params),
+      );
+      return response.data;
+    } catch (error) {
+      console.error('Error selecting participants:', error);
+      // Return error info but don't fail the study creation
+      return {
+        error: error.message,
+        selectedParticipants: [],
+        totalEvaluated: 0,
+      };
     }
   }
 }

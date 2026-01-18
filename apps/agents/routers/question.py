@@ -29,7 +29,7 @@ class ConversationTurn(BaseModel):
 class QuestionRequest(BaseModel):
     sessionId: str
     studyId: str
-    questionId: str  # UUID from research_questions table
+    questionId: Optional[str] = None  # UUID from research_questions table
     participantId: str # UUID from participants table
     conversationHistory: List[ConversationTurn]
     participantContext: Optional[Dict[str, Any]] = None # Deprecated, preferred to fetch from DB

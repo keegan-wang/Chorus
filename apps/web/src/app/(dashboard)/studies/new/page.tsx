@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
+import { studiesApi } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -160,56 +160,32 @@ export default function NewStudyPage() {
         return;
       }
 
-      const supabase = createClient();
-
-      // Create the study
-      const { data: study, error: studyError } = await supabase
-        .from('studies')
-        .insert({
-          organization_id: user.organizationId,
-          title: formData.title,
-          description: formData.description,
-          target_participant_count: formData.targetParticipants,
-          guardrail_profile: formData.guardrailProfile,
-          target_demographics: {
-            age: formData.targetAge,
-            gender: formData.targetGender,
-          },
-          research_intent: {
-            goals: formData.description,
-            type: formData.type,
-          },
-          interview_config: {
-            max_follow_ups: formData.maxFollowUps,
-            max_questions: formData.maxQuestions,
-            allow_skip: formData.allowSkip,
-            require_audio_response: formData.requireAudioResponse,
-          },
-          status: 'draft',
-        })
-        .select()
-        .single();
-
-      if (studyError) {
-        throw studyError;
-      }
-
-      // Create the questions
-      const questionInserts = validQuestions.map((q, index) => ({
-        study_id: study.id,
-        text: q.text,
-        type: 'open_ended',
-        order_index: index,
-        is_seed: true,
-      }));
-
-      const { error: questionsError } = await supabase
-        .from('questions')
-        .insert(questionInserts);
-
-      if (questionsError) {
-        throw questionsError;
-      }
+      // Create the study via backend API
+      const study = await studiesApi.create({
+        title: formData.title,
+        description: formData.description,
+        type: formData.type,
+        target_participant_count: formData.targetParticipants,
+        guardrail_profile: formData.guardrailProfile,
+        target_demographics: {
+          age: formData.targetAge,
+          gender: formData.targetGender,
+        },
+        research_intent: {
+          goals: formData.description,
+          type: formData.type,
+        },
+        interview_config: {
+          max_follow_ups: formData.maxFollowUps,
+          max_questions: formData.maxQuestions,
+          allow_skip: formData.allowSkip,
+          require_audio_response: formData.requireAudioResponse,
+        },
+        questions: validQuestions.map((q, index) => ({
+          text: q.text,
+          order: index,
+        })),
+      });
 
       toast({
         title: 'Study created',
@@ -222,7 +198,7 @@ export default function NewStudyPage() {
       toast({
         variant: 'destructive',
         title: 'Error',
-        description: 'Failed to create study. Please try again.',
+        description: error instanceof Error ? error.message : 'Failed to create study. Please try again.',
       });
     } finally {
       setIsLoading(false);
