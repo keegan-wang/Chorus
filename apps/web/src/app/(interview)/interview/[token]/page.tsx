@@ -61,34 +61,81 @@ export default function InterviewPage() {
     async function loadSession() {
       const supabase = createClient();
 
-      // Fetch session by token
-      const { data: sessionData, error: sessionError } = await supabase
-        .from('sessions')
+      // Fetch assignment by invite token first
+      const { data: assignmentData, error: assignmentError } = await supabase
+        .from('study_participant_assignments')
         .select(`
           id,
-          status,
-          current_question_id,
-          participant:participants(name, email),
-          study:studies(
+          avatar_id,
+          study:studies!inner(
+            id,
             title,
             description,
             interview_config
-          )
+          ),
+          participant:participants!inner(id, full_name, email)
         `)
-        .eq('participant_token', token)
+        .eq('invite_token', token)
         .single();
 
-      if (sessionError || !sessionData) {
+      if (assignmentError || !assignmentData) {
         toast({
           variant: 'destructive',
-          title: 'Invalid session',
+          title: 'Invalid interview link',
           description: 'This interview link is not valid or has expired.',
         });
         setIsLoading(false);
         return;
       }
 
-      setSession(sessionData as any);
+      // Type cast to fix Supabase nested relation inference
+      const assignment = assignmentData as any;
+
+      // Now fetch or create the interview session
+      let sessionData;
+      const { data: existingSession } = await supabase
+        .from('interview_sessions')
+        .select('*')
+        .eq('assignment_id', assignment.id)
+        .single();
+
+      if (existingSession) {
+        sessionData = existingSession;
+      } else {
+        // Create new session
+        const { data: newSession, error: createError } = await supabase
+          .from('interview_sessions')
+          .insert({
+            assignment_id: assignment.id,
+            study_id: assignment.study.id,
+            participant_id: assignment.participant.id,
+            avatar_id: assignment.avatar_id,
+            status: 'initialized',
+            config_snapshot: assignment.study.interview_config || {}
+          })
+          .select()
+          .single();
+
+        if (createError) {
+          toast({
+            variant: 'destructive',
+            title: 'Error',
+            description: 'Failed to create interview session.',
+          });
+          setIsLoading(false);
+          return;
+        }
+        sessionData = newSession;
+      }
+
+      // Combine session with assignment data for display
+      const combinedSession = {
+        ...sessionData,
+        participant: assignment.participant,
+        study: assignment.study
+      };
+
+      setSession(combinedSession as any);
 
       if (sessionData.status === 'completed') {
         setIsCompleted(true);

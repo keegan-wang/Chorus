@@ -6,7 +6,7 @@ from dotenv import load_dotenv
 load_dotenv(dotenv_path="../../.env")
 load_dotenv(dotenv_path="../../.env.local", override=True)
 
-from routers import question, quality, summary, overview, avatar, transcribe, avatar_selection
+from routers import question, quality, summary, overview, avatar, transcribe, avatar_selection, aggregate
 
 app = FastAPI(
     title="Chorus Agents API",
@@ -31,6 +31,7 @@ app.include_router(overview.router, prefix="/api/agents", tags=["Overview Agent"
 app.include_router(avatar.router, prefix="/api/agents", tags=["Avatar Agent"])
 app.include_router(transcribe.router, prefix="/api/agents", tags=["Transcription"])
 app.include_router(avatar_selection.router, prefix="/api/agents", tags=["Avatar Selection"])
+app.include_router(aggregate.router, prefix="/api/agents", tags=["Aggregate Summary Agent"])
 
 @app.get("/")
 async def root():

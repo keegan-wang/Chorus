@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { formatNumber } from '@/lib/utils';
+import { ParticipantDashboard } from '@/components/ParticipantDashboard';
 
 interface Participant {
   id: string;
@@ -30,6 +31,7 @@ export default function ParticipantsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [selectedParticipantId, setSelectedParticipantId] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchParticipants() {
@@ -116,6 +118,15 @@ export default function ParticipantsPage() {
       <div className="flex items-center justify-center py-12">
         <div className="text-muted-foreground">Loading participants...</div>
       </div>
+    );
+  }
+
+  if (selectedParticipantId) {
+    return (
+      <ParticipantDashboard
+        participantId={selectedParticipantId}
+        onBack={() => setSelectedParticipantId(null)}
+      />
     );
   }
 
@@ -218,7 +229,11 @@ export default function ParticipantsPage() {
                 </thead>
                 <tbody>
                   {filteredParticipants.map((participant) => (
-                    <tr key={participant.id} className="border-b hover:bg-muted/50">
+                    <tr
+                      key={participant.id}
+                      className="border-b hover:bg-muted/50 cursor-pointer"
+                      onClick={() => setSelectedParticipantId(participant.id)}
+                    >
                       <td className="py-3">{participant.email}</td>
                       <td className="py-3">{participant.name || '-'}</td>
                       <td className="py-3">{participant.study.title}</td>

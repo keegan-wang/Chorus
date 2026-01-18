@@ -8,3 +8,4 @@ aiofiles
 supabase
 redis
 Faker
+httpx
