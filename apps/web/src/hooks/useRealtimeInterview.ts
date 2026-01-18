@@ -16,6 +16,8 @@ interface UseRealtimeInterviewOptions {
   onAudioDone?: () => void;
   onInterviewComplete?: () => void;
   onError?: (error: string) => void;
+  onSpeechStarted?: () => void;
+  onSpeechStopped?: () => void;
 }
 
 interface UseRealtimeInterviewReturn {
@@ -36,6 +38,8 @@ export function useRealtimeInterview({
   onAudioDone,
   onInterviewComplete,
   onError,
+  onSpeechStarted,
+  onSpeechStopped,
 }: UseRealtimeInterviewOptions): UseRealtimeInterviewReturn {
   const [isConnected, setIsConnected] = useState(false);
   const [isInterviewActive, setIsInterviewActive] = useState(false);
@@ -45,6 +49,7 @@ export function useRealtimeInterview({
   const socketRef = useRef<Socket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const nextPlayTimeRef = useRef<number>(0);
+  const audioSentCountRef = useRef<number>(0);
 
   // Initialize Socket.IO connection
   useEffect(() => {
@@ -121,13 +126,21 @@ export function useRealtimeInterview({
         onInterviewComplete?.();
         break;
 
+      case 'speech_started':
+        onSpeechStarted?.();
+        break;
+
+      case 'speech_stopped':
+        onSpeechStopped?.();
+        break;
+
       case 'error':
         const errorMsg = message.message || 'Unknown error';
         setError(errorMsg);
         onError?.(errorMsg);
         break;
     }
-  }, [onQuestion, onTranscript, onAudioDelta, onAudioDone, onInterviewComplete, onError]);
+  }, [onQuestion, onTranscript, onAudioDelta, onAudioDone, onInterviewComplete, onError, onSpeechStarted, onSpeechStopped]);
 
   const startInterview = useCallback(async () => {
     if (!socketRef.current) {
@@ -139,6 +152,7 @@ export function useRealtimeInterview({
       // Initialize audio context
       audioContextRef.current = new AudioContext({ sampleRate: 24000 });
       nextPlayTimeRef.current = 0; // Reset audio scheduling
+      audioSentCountRef.current = 0; // Reset audio sent counter
 
       // Emit start event
       socketRef.current.emit('start-realtime-interview', { sessionId });
@@ -155,6 +169,17 @@ export function useRealtimeInterview({
     if (!socketRef.current || !isInterviewActive) {
       console.warn('Cannot send audio: interview not active');
       return;
+    }
+
+    // Log first audio sent
+    if (audioSentCountRef.current === 0) {
+      console.log('[Interview] Sending first audio chunk to server');
+    }
+    audioSentCountRef.current++;
+
+    // Log every 100 chunks
+    if (audioSentCountRef.current % 100 === 0) {
+      console.log(`[Interview] Sent ${audioSentCountRef.current} audio chunks to server`);
     }
 
     socketRef.current.emit('realtime-audio', { sessionId, audio: audioData });

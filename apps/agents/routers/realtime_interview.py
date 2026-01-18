@@ -80,7 +80,7 @@ class RealtimeInterviewSession:
                     "type": "server_vad",
                     "threshold": 0.5,
                     "prefix_padding_ms": 300,
-                    "silence_duration_ms": 500
+                    "silence_duration_ms": 3000
                 },
                 "temperature": 0.8
             }
@@ -244,10 +244,58 @@ class RealtimeInterviewSession:
         """Handle messages from OpenAI Realtime API"""
         msg_type = message.get("type")
 
+        # Log all events for debugging (excluding audio deltas to reduce noise)
+        if msg_type != "response.audio.delta":
+            print(f"[OpenAI Event] {msg_type}: {json.dumps(message, indent=2)}")
+
         if msg_type == "conversation.item.input_audio_transcription.completed":
             # Participant's response has been transcribed
             transcript = message.get("transcript", "")
+            print(f"[Transcript] {transcript}")
             await self.handle_transcript(transcript)
+
+        elif msg_type == "input_audio_buffer.speech_started":
+            # User started speaking
+            print("[VAD] Speech started")
+            await self.client_ws.send_json({
+                "type": "speech_started"
+            })
+
+        elif msg_type == "input_audio_buffer.speech_stopped":
+            # User stopped speaking - commit the buffer
+            print("[VAD] Speech stopped - committing audio buffer")
+            await self.client_ws.send_json({
+                "type": "speech_stopped"
+            })
+            await self.openai_ws.send(json.dumps({
+                "type": "input_audio_buffer.commit"
+            }))
+
+        elif msg_type == "input_audio_buffer.committed":
+            # Buffer committed - with server_vad, response is auto-created
+            print("[VAD] Audio buffer committed")
+
+        elif msg_type == "conversation.item.created":
+            # Conversation item created (user or assistant message)
+            item = message.get("item", {})
+            print(f"[Conversation] Item created: {item.get('type')}")
+
+        elif msg_type == "response.done":
+            # Response generation complete - extract transcript from user input
+            response = message.get("response", {})
+            print(f"[Response] Done: {response}")
+
+            # Look for the user's transcript in the output
+            output = response.get("output", [])
+            for item in output:
+                if item.get("type") == "message":
+                    content = item.get("content", [])
+                    for content_part in content:
+                        if content_part.get("type") == "input_audio":
+                            transcript = content_part.get("transcript")
+                            if transcript:
+                                print(f"[Transcript from response.done] {transcript}")
+                                await self.handle_transcript(transcript)
 
         elif msg_type == "response.audio.delta":
             # Stream audio chunk to client
@@ -273,6 +321,11 @@ class RealtimeInterviewSession:
 
     async def forward_audio_to_openai(self, audio_data: str):
         """Forward audio from client to OpenAI"""
+        # Log first time we receive audio
+        if not hasattr(self, '_audio_received'):
+            self._audio_received = True
+            print(f"[Audio] First audio chunk received, length: {len(audio_data)} bytes")
+
         audio_message = {
             "type": "input_audio_buffer.append",
             "audio": audio_data

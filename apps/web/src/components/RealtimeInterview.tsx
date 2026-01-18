@@ -11,6 +11,8 @@ interface RealtimeInterviewProps {
 export function RealtimeInterview({ sessionId }: RealtimeInterviewProps) {
   const [transcript, setTranscript] = useState<string[]>([]);
   const [isListening, setIsListening] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [silenceCountdown, setSilenceCountdown] = useState<number | null>(null);
 
   const {
     isConnected,
@@ -42,6 +44,16 @@ export function RealtimeInterview({ sessionId }: RealtimeInterviewProps) {
     onError: (error) => {
       console.error('Interview error:', error);
     },
+    onSpeechStarted: () => {
+      console.log('Speech started');
+      setIsSpeaking(true);
+      setSilenceCountdown(null);
+    },
+    onSpeechStopped: () => {
+      console.log('Speech stopped');
+      setIsSpeaking(false);
+      setSilenceCountdown(3); // Start 3 second countdown
+    },
   });
 
   const {
@@ -59,6 +71,20 @@ export function RealtimeInterview({ sessionId }: RealtimeInterviewProps) {
       console.error('Recorder error:', error);
     },
   });
+
+  // Countdown timer effect
+  useEffect(() => {
+    if (silenceCountdown === null || silenceCountdown === 0) return;
+
+    const timer = setInterval(() => {
+      setSilenceCountdown(prev => {
+        if (prev === null || prev <= 1) return null;
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [silenceCountdown]);
 
   // Auto-start recording when interview becomes active and we're listening
   useEffect(() => {
@@ -132,6 +158,80 @@ export function RealtimeInterview({ sessionId }: RealtimeInterviewProps) {
           </button>
         )}
       </div>
+
+      {/* Voice Activity Detection UI */}
+      {isInterviewActive && isListening && (
+        <div className="mb-6 p-6 bg-gradient-to-r from-purple-50 to-blue-50 border-2 border-purple-200 rounded-lg shadow-md">
+          <div className="flex items-center justify-between">
+            {/* Voice Detection Indicator */}
+            <div className="flex items-center gap-4">
+              <div className="relative">
+                <div className={`w-16 h-16 rounded-full flex items-center justify-center transition-all duration-300 ${
+                  isSpeaking
+                    ? 'bg-green-500 animate-pulse shadow-lg shadow-green-500/50'
+                    : 'bg-gray-300'
+                }`}>
+                  <svg
+                    className={`w-8 h-8 ${isSpeaking ? 'text-white' : 'text-gray-500'}`}
+                    fill="currentColor"
+                    viewBox="0 0 20 20"
+                  >
+                    <path d="M7 4a3 3 0 016 0v6a3 3 0 11-6 0V4z" />
+                    <path d="M5.5 9.643a.75.75 0 00-1.5 0V10c0 3.06 2.29 5.585 5.25 5.954V17.5h-1.5a.75.75 0 000 1.5h4.5a.75.75 0 000-1.5h-1.5v-1.546A6.001 6.001 0 0016 10v-.357a.75.75 0 00-1.5 0V10a4.5 4.5 0 01-9 0v-.357z" />
+                  </svg>
+                </div>
+                {isSpeaking && (
+                  <div className="absolute inset-0 rounded-full border-4 border-green-400 animate-ping" />
+                )}
+              </div>
+              <div>
+                <p className={`font-bold text-lg transition-colors ${
+                  isSpeaking ? 'text-green-700' : 'text-gray-600'
+                }`}>
+                  {isSpeaking ? 'Listening to you...' : 'Speak your answer'}
+                </p>
+                <p className="text-sm text-gray-500">
+                  {isSpeaking ? 'We can hear you!' : 'Start speaking to respond'}
+                </p>
+              </div>
+            </div>
+
+            {/* Countdown Timer */}
+            {silenceCountdown !== null && (
+              <div className="flex flex-col items-center">
+                <div className="relative w-20 h-20">
+                  <svg className="w-20 h-20 transform -rotate-90">
+                    <circle
+                      cx="40"
+                      cy="40"
+                      r="34"
+                      stroke="#e5e7eb"
+                      strokeWidth="6"
+                      fill="none"
+                    />
+                    <circle
+                      cx="40"
+                      cy="40"
+                      r="34"
+                      stroke="#f59e0b"
+                      strokeWidth="6"
+                      fill="none"
+                      strokeLinecap="round"
+                      strokeDasharray={`${2 * Math.PI * 34}`}
+                      strokeDashoffset={`${2 * Math.PI * 34 * (1 - silenceCountdown / 3)}`}
+                      className="transition-all duration-1000 ease-linear"
+                    />
+                  </svg>
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <span className="text-2xl font-bold text-amber-600">{silenceCountdown}</span>
+                  </div>
+                </div>
+                <p className="text-xs text-amber-600 font-medium mt-1">Processing...</p>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Current Question */}
       {currentQuestion && (

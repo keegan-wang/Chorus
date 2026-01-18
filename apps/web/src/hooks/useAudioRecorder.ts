@@ -23,9 +23,13 @@ export function useAudioRecorder({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const audioChunkCountRef = useRef<number>(0);
 
   const startRecording = useCallback(async () => {
     try {
+      // Reset audio chunk counter
+      audioChunkCountRef.current = 0;
+
       // Request microphone access
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
@@ -37,6 +41,7 @@ export function useAudioRecorder({
         },
       });
 
+      console.log('[Recorder] Microphone access granted, starting recording');
       mediaStreamRef.current = stream;
 
       // Create audio context for processing
@@ -49,9 +54,13 @@ export function useAudioRecorder({
       processorRef.current = processor;
 
       processor.onaudioprocess = (event) => {
-        if (!isRecording) return;
-
         const inputData = event.inputBuffer.getChannelData(0);
+
+        // Log first audio chunk
+        if (audioChunkCountRef.current === 0) {
+          console.log('[Recorder] First audio chunk captured from microphone');
+        }
+        audioChunkCountRef.current++;
 
         // Convert float32 to PCM16
         const pcm16 = new Int16Array(inputData.length);
@@ -62,6 +71,12 @@ export function useAudioRecorder({
 
         // Convert to base64
         const base64Audio = arrayBufferToBase64(pcm16.buffer);
+
+        // Log every 100 chunks
+        if (audioChunkCountRef.current % 100 === 0) {
+          console.log(`[Recorder] Sent ${audioChunkCountRef.current} audio chunks`);
+        }
+
         onAudioData?.(base64Audio);
       };
 

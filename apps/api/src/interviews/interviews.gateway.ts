@@ -108,16 +108,37 @@ export class InterviewsGateway implements OnGatewayConnection, OnGatewayDisconne
     }
   }
 
+  private audioChunkCount = new Map<string, number>();
+
   @SubscribeMessage('realtime-audio')
   handleRealtimeAudio(
     @MessageBody() data: { sessionId: string; audio: string },
     @ConnectedSocket() client: Socket,
   ) {
     const { sessionId, audio } = data;
+
+    // Log first audio chunk
+    if (!this.audioChunkCount.has(sessionId)) {
+      this.audioChunkCount.set(sessionId, 0);
+      console.log(`[Gateway] First audio chunk received for session ${sessionId}, length: ${audio?.length || 0}`);
+    }
+
+    const count = this.audioChunkCount.get(sessionId)!;
+    this.audioChunkCount.set(sessionId, count + 1);
+
+    // Log every 100 chunks
+    if (count % 100 === 0) {
+      console.log(`[Gateway] Forwarded ${count} audio chunks for session ${sessionId}`);
+    }
+
     const ws = this.agentsWsConnections.get(sessionId);
 
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'audio', data: audio }));
+    } else {
+      if (count === 0) {
+        console.warn(`[Gateway] Cannot forward audio - WebSocket not ready for session ${sessionId}`);
+      }
     }
   }
 
