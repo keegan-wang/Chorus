@@ -7,9 +7,10 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 
 const navigation = [
-  { name: 'Studies', href: '/studies' },
-  { name: 'Participants', href: '/participants' },
-  { name: 'Integrations', href: '/integrations' },
+  { name: 'My Interviews', href: '/my-interviews', individualOnly: true },
+  { name: 'Studies', href: '/studies', companyOnly: true },
+  { name: 'Participants', href: '/participants', companyOnly: true },
+  { name: 'Integrations', href: '/integrations', companyOnly: true },
   { name: 'Settings', href: '/settings' },
 ];
 
@@ -53,23 +54,29 @@ export default function DashboardLayout({
 
         {/* Navigation */}
         <nav className="flex-1 space-y-1 p-4">
-          {navigation.map((item) => {
-            const isActive = pathname.startsWith(item.href);
-            return (
-              <Link
-                key={item.name}
-                href={item.href}
-                className={cn(
-                  'flex items-center space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
-                  isActive
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-                )}
-              >
-                {item.name}
-              </Link>
-            );
-          })}
+          {navigation
+            .filter((item) => {
+              if (item.companyOnly && user?.userType !== 'company') return false;
+              if (item.individualOnly && user?.userType !== 'individual') return false;
+              return true;
+            })
+            .map((item) => {
+              const isActive = pathname.startsWith(item.href);
+              return (
+                <Link
+                  key={item.name}
+                  href={item.href}
+                  className={cn(
+                    'flex items-center space-x-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors',
+                    isActive
+                      ? 'bg-primary text-primary-foreground'
+                      : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                  )}
+                >
+                  {item.name}
+                </Link>
+              );
+            })}
         </nav>
 
         {/* User section */}
