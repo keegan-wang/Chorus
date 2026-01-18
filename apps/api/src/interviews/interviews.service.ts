@@ -15,7 +15,7 @@ export class InterviewsService {
 
     // Get session details
     const { data: session, error } = await supabase
-      .from('sessions')
+      .from('interview_sessions')
       .select(`
         *,
         study:studies(*),
@@ -57,7 +57,7 @@ export class InterviewsService {
 
     // Update session with first question
     await supabase
-      .from('sessions')
+      .from('interview_sessions')
       .update({
         status: 'active',
         current_question_id: firstQuestion.id,
@@ -83,13 +83,47 @@ export class InterviewsService {
     };
   }
 
+  async startRealtimeInterview(sessionId: string) {
+    const supabase = this.databaseService.getClient();
+
+    // Get session details
+    const { data: session, error } = await supabase
+      .from('interview_sessions')
+      .select(`
+        *,
+        study:studies(*),
+        participant:participants(*)
+      `)
+      .eq('id', sessionId)
+      .single();
+
+    if (error || !session) {
+      throw new NotFoundException('Session not found');
+    }
+
+    // Update session status to active
+    await supabase
+      .from('interview_sessions')
+      .update({
+        status: 'active',
+        started_at: new Date().toISOString(),
+      })
+      .eq('id', sessionId);
+
+    return {
+      sessionId,
+      status: 'active',
+      message: 'Realtime interview ready to start',
+    };
+  }
+
   async submitAnswer(submitAnswerDto: SubmitAnswerDto) {
     const { sessionId, questionId, answerText, audioUrl } = submitAnswerDto;
     const supabase = this.databaseService.getClient();
 
     // Get session details
     const { data: session } = await supabase
-      .from('sessions')
+      .from('interview_sessions')
       .select(`
         *,
         study:studies(*),
@@ -178,7 +212,7 @@ export class InterviewsService {
 
     // Update session with next question
     await supabase
-      .from('sessions')
+      .from('interview_sessions')
       .update({ current_question_id: nextQuestion.id })
       .eq('id', sessionId);
 
@@ -234,7 +268,7 @@ export class InterviewsService {
     const supabase = this.databaseService.getClient();
 
     const { data, error } = await supabase
-      .from('sessions')
+      .from('interview_sessions')
       .select(`
         *,
         study:studies(*),
@@ -271,7 +305,7 @@ export class InterviewsService {
 
     // Calculate duration
     const { data: session } = await supabase
-      .from('sessions')
+      .from('interview_sessions')
       .select('started_at')
       .eq('id', sessionId)
       .single();
@@ -282,7 +316,7 @@ export class InterviewsService {
 
     // Update session status
     await supabase
-      .from('sessions')
+      .from('interview_sessions')
       .update({
         status: 'completed',
         completed_at: new Date().toISOString(),
@@ -292,7 +326,7 @@ export class InterviewsService {
 
     // Update participant status
     const { data: sessionData } = await supabase
-      .from('sessions')
+      .from('interview_sessions')
       .select('participant_id')
       .eq('id', sessionId)
       .single();

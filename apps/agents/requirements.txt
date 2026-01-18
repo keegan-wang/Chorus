@@ -9,3 +9,4 @@ supabase
 redis
 Faker
 httpx
+websockets

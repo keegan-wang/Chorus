@@ -23,6 +23,12 @@ export class InterviewsController {
     return this.interviewsService.startInterview(startInterviewDto.sessionId);
   }
 
+  @Post('start-realtime')
+  @ApiOperation({ summary: 'Start a realtime voice interview session' })
+  async startRealtime(@Body() startInterviewDto: StartInterviewDto) {
+    return this.interviewsService.startRealtimeInterview(startInterviewDto.sessionId);
+  }
+
   @Post('answer')
   @ApiOperation({ summary: 'Submit an answer to a question' })
   async submitAnswer(@Body() submitAnswerDto: SubmitAnswerDto) {

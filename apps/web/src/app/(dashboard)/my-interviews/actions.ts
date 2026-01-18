@@ -159,6 +159,7 @@ export async function startInterview(assignmentId: string, participantId: string
                 study_id: studyId,
                 participant_id: participantId,
                 avatar_id: avatarId,
+                research_question_id: assignment.research_question_id,
                 status: 'in_progress',
                 started_at: new Date().toISOString()
             })

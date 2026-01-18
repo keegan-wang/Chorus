@@ -14,7 +14,16 @@
       "Bash(open:*)",
       "Bash(chmod:*)",
       "Bash(./start.sh)",
-      "Bash(lsof:*)"
+      "Bash(lsof:*)",
+      "Skill(brainstorming)",
+      "Bash(ls:*)",
+      "Bash(grep:*)",
+      "Bash(npm install:*)",
+      "Bash(pnpm add:*)",
+      "Bash(pip install:*)",
+      "Skill(systematic-debugging)",
+      "Bash(python -m py_compile:*)",
+      "Skill(verification-before-completion)"
     ]
   }
 }
