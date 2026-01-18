@@ -22,6 +22,8 @@ class SummaryResponse(BaseModel):
     sentiment: str
     themes: List[str]
     notable_quotes: List[str]
+    positive_feedback: List[str]
+    negative_feedback: List[str]
     summary_text: str
 
 @router.post("/summary", response_model=SummaryResponse)
@@ -38,9 +40,9 @@ async def generate_session_summary(request: SummaryRequest):
 
         # Build conversation text
         conversation = "\n\n".join([
-            f"Q: {turn['question_text']}\nA: {turn['answer_text']}"
+            f"Q: {turn['question_text']}\nA: {turn['answer_transcript']}"
             for turn in qa_turns.data
-            if turn['answer_text'] and turn['answer_text'] != '[SKIPPED]'
+            if turn.get('answer_transcript') and turn['answer_transcript'] != '[SKIPPED]'
         ])
 
         # Generate summary with GPT-4
@@ -51,7 +53,9 @@ Analyze the following interview and provide:
 2. Sentiment: Overall participant sentiment (positive, neutral, negative, mixed)
 3. Themes: Main topics/themes discussed
 4. Notable Quotes: 2-3 most interesting or revealing quotes
-5. Summary: A concise paragraph summarizing the interview
+5. Positive Feedback: Things the participant liked, praised, or expressed satisfaction about
+6. Negative Feedback: Things the participant disliked, complained about, or expressed frustration with
+7. Summary: A concise paragraph summarizing the interview
 
 Return your analysis as JSON with this structure:
 {
@@ -59,11 +63,13 @@ Return your analysis as JSON with this structure:
   "sentiment": "<sentiment>",
   "themes": [<list of themes>],
   "notable_quotes": [<list of quotes>],
+  "positive_feedback": [<list of positive points>],
+  "negative_feedback": [<list of negative points>],
   "summary_text": "<summary paragraph>"
 }"""
 
         response = openai_client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": f"Interview:\n\n{conversation}"}
@@ -82,7 +88,11 @@ Return your analysis as JSON with this structure:
             **result
         }
 
-        supabase.table("session_summaries").insert(summary_data).execute()
+        try:
+            supabase.table("interview_summaries").insert(summary_data).execute()
+        except Exception as db_error:
+            # Log the error but don't fail the request
+            print(f"Warning: Could not save to database: {db_error}")
 
         return SummaryResponse(
             session_id=request.sessionId,

@@ -38,24 +38,24 @@ if not url or not key:
 supabase: Client = create_client(url, key)
 
 def get_first_organization() -> str:
-    """Fetch the first organization ID from the database, or create one if none exist."""
-    response = supabase.table("organizations").select("id").limit(1).execute()
-    
+    """Fetch the test organization ID from the database, or create one if none exist."""
+    # Try to get the test org first (used by seed_session.py)
+    response = supabase.table("organizations").select("id").eq("slug", "chorus-test-org").execute()
+
     if response.data:
         return response.data[0]["id"]
-    
-    print("No organization found. Creating 'Default Organization'...")
+
+    # If not found, create it
+    print("Test organization not found. Creating 'Chorus Test Org'...")
     new_org = {
-        "name": "Default Organization",
-        "slug": "default-org",
-        "billing_email": "admin@example.com",
-        "plan": "free"
+        "name": "Chorus Test Org",
+        "slug": "chorus-test-org",
     }
     insert_response = supabase.table("organizations").insert(new_org).execute()
     if insert_response.data:
         return insert_response.data[0]["id"]
-    
-    raise ValueError("Failed to create a default organization.")
+
+    raise ValueError("Failed to create test organization.")
 
 def generate_participant(org_id: str) -> Dict[str, Any]:
     """Generate a single fake participant record."""
