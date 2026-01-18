@@ -66,10 +66,10 @@ export class InterviewsGateway implements OnGatewayConnection, OnGatewayDisconne
     const { sessionId } = data;
 
     try {
-      // Connect to Python agents WebSocket endpoint
+      // Connect to Python agents WebSocket endpoint (simple interview)
       const agentsUrl = process.env.AGENTS_API_URL || 'http://localhost:8000';
       const wsUrl = agentsUrl.replace('http', 'ws');
-      const ws = new WebSocket(`${wsUrl}/api/agents/realtime-interview/${sessionId}`);
+      const ws = new WebSocket(`${wsUrl}/api/agents/simple-interview/${sessionId}`);
 
       // Store the connection
       this.agentsWsConnections.set(sessionId, ws);
@@ -117,28 +117,19 @@ export class InterviewsGateway implements OnGatewayConnection, OnGatewayDisconne
   ) {
     const { sessionId, audio } = data;
 
-    // Log first audio chunk
-    if (!this.audioChunkCount.has(sessionId)) {
-      this.audioChunkCount.set(sessionId, 0);
-      console.log(`[Gateway] First audio chunk received for session ${sessionId}, length: ${audio?.length || 0}`);
+    if (!audio) {
+      console.warn(`[Gateway] Received empty audio for session ${sessionId}`);
+      return;
     }
 
-    const count = this.audioChunkCount.get(sessionId)!;
-    this.audioChunkCount.set(sessionId, count + 1);
-
-    // Log every 100 chunks
-    if (count % 100 === 0) {
-      console.log(`[Gateway] Forwarded ${count} audio chunks for session ${sessionId}`);
-    }
+    console.log(`[Gateway] Received complete audio for session ${sessionId}, length: ${audio.length} bytes`);
 
     const ws = this.agentsWsConnections.get(sessionId);
 
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'audio', data: audio }));
     } else {
-      if (count === 0) {
-        console.warn(`[Gateway] Cannot forward audio - WebSocket not ready for session ${sessionId}`);
-      }
+      console.warn(`[Gateway] Cannot forward audio - WebSocket not ready for session ${sessionId}`);
     }
   }
 

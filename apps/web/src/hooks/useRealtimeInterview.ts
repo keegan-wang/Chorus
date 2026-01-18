@@ -12,8 +12,8 @@ interface UseRealtimeInterviewOptions {
   sessionId: string;
   onQuestion?: (questionText: string) => void;
   onTranscript?: (transcript: string) => void;
-  onAudioDelta?: (audioData: string) => void;
-  onAudioDone?: () => void;
+  onAudioComplete?: (audioData: string) => void;
+  onAudioPlaybackFinished?: () => void;
   onInterviewComplete?: () => void;
   onError?: (error: string) => void;
   onSpeechStarted?: () => void;
@@ -26,6 +26,7 @@ interface UseRealtimeInterviewReturn {
   currentQuestion: string | null;
   startInterview: () => Promise<void>;
   sendAudio: (audioData: string) => void;
+  stopListening: () => void;
   endInterview: () => void;
   error: string | null;
 }
@@ -34,8 +35,8 @@ export function useRealtimeInterview({
   sessionId,
   onQuestion,
   onTranscript,
-  onAudioDelta,
-  onAudioDone,
+  onAudioComplete,
+  onAudioPlaybackFinished,
   onInterviewComplete,
   onError,
   onSpeechStarted,
@@ -48,8 +49,141 @@ export function useRealtimeInterview({
 
   const socketRef = useRef<Socket | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const nextPlayTimeRef = useRef<number>(0);
   const audioSentCountRef = useRef<number>(0);
+  const currentAudioSourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const handleRealtimeMessageRef = useRef<(message: RealtimeMessage) => void>();
+  const onErrorRef = useRef<((error: string) => void) | undefined>();
+  const onAudioPlaybackFinishedRef = useRef<(() => void) | undefined>();
+
+  // Keep refs updated
+  useEffect(() => {
+    onErrorRef.current = onError;
+    onAudioPlaybackFinishedRef.current = onAudioPlaybackFinished;
+  }, [onError, onAudioPlaybackFinished]);
+
+  // Define audio playback function
+  const playCompleteAudio = useCallback(async (base64Audio: string, format?: string) => {
+    if (!audioContextRef.current) {
+      console.error('[Audio] AudioContext not initialized');
+      return;
+    }
+
+    if (!base64Audio) {
+      console.warn('[Audio] No audio data to play');
+      return;
+    }
+
+    try {
+      // Stop any currently playing audio
+      if (currentAudioSourceRef.current) {
+        console.log('[Audio] Stopping previous audio');
+        try {
+          currentAudioSourceRef.current.stop();
+        } catch (e) {
+          // Ignore errors if already stopped
+        }
+        currentAudioSourceRef.current = null;
+      }
+
+      const audioContext = audioContextRef.current;
+
+      // Check if audio context is suspended and resume it
+      if (audioContext.state === 'suspended') {
+        console.log('[Audio] AudioContext suspended, resuming...');
+        await audioContext.resume();
+        console.log(`[Audio] AudioContext resumed (state: ${audioContext.state})`);
+      }
+
+      console.log(`[Audio] Decoding complete audio (${base64Audio.length} bytes base64, format: ${format || 'pcm16'})`);
+
+      // Decode base64 to ArrayBuffer
+      const binaryString = atob(base64Audio);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+
+      console.log(`[Audio] Decoded ${bytes.length} bytes`);
+
+      // Decode audio data
+      const audioBuffer = await audioContext.decodeAudioData(bytes.buffer);
+
+      console.log(`[Audio] Decoded audio buffer (duration: ${audioBuffer.duration.toFixed(2)}s, channels: ${audioBuffer.numberOfChannels}, rate: ${audioBuffer.sampleRate})`);
+
+      // Play the complete audio
+      const source = audioContext.createBufferSource();
+      source.buffer = audioBuffer;
+      source.connect(audioContext.destination);
+
+      // Store reference to current audio source
+      currentAudioSourceRef.current = source;
+
+      // Add event listener for when audio finishes
+      source.onended = () => {
+        console.log('[Audio] ✅ Playback finished completely');
+        currentAudioSourceRef.current = null;
+        onAudioPlaybackFinishedRef.current?.();
+      };
+
+      source.start(0);
+
+      console.log(`[Audio] ✅ Started playing audio`);
+    } catch (err) {
+      console.error('[Audio] ❌ Error playing audio:', err);
+    }
+  }, []); // Empty dependency array since we use refs
+
+  // Define message handler
+  const handleRealtimeMessage = useCallback((message: RealtimeMessage) => {
+    switch (message.type) {
+      case 'question':
+        if (message.text) {
+          setCurrentQuestion(message.text);
+          onQuestion?.(message.text);
+        }
+        break;
+
+      case 'transcript':
+        if (message.text) {
+          onTranscript?.(message.text);
+        }
+        break;
+
+      case 'audio_complete':
+        if (message.data) {
+          console.log(`[Audio] Received complete audio (${message.data.length} bytes, format: ${(message as any).format || 'unknown'})`);
+          onAudioComplete?.(message.data);
+          playCompleteAudio(message.data, (message as any).format);
+        } else {
+          console.warn('[Audio] Received audio_complete with no data');
+        }
+        break;
+
+      case 'interview_complete':
+        setIsInterviewActive(false);
+        onInterviewComplete?.();
+        break;
+
+      case 'speech_started':
+        onSpeechStarted?.();
+        break;
+
+      case 'speech_stopped':
+        onSpeechStopped?.();
+        break;
+
+      case 'error':
+        const errorMsg = message.message || 'Unknown error';
+        setError(errorMsg);
+        onError?.(errorMsg);
+        break;
+    }
+  }, [onQuestion, onTranscript, onAudioComplete, onInterviewComplete, onError, onSpeechStarted, onSpeechStopped, playCompleteAudio]);
+
+  // Update the ref when the callback changes
+  useEffect(() => {
+    handleRealtimeMessageRef.current = handleRealtimeMessage;
+  }, [handleRealtimeMessage]);
 
   // Initialize Socket.IO connection
   useEffect(() => {
@@ -75,13 +209,13 @@ export function useRealtimeInterview({
     });
 
     socket.on('realtime-message', (message: RealtimeMessage) => {
-      handleRealtimeMessage(message);
+      handleRealtimeMessageRef.current?.(message);
     });
 
     socket.on('realtime-error', (data: { message: string }) => {
       const errorMsg = data.message || 'Unknown error';
       setError(errorMsg);
-      onError?.(errorMsg);
+      onErrorRef.current?.(errorMsg);
     });
 
     socket.on('realtime-closed', () => {
@@ -92,70 +226,36 @@ export function useRealtimeInterview({
       socket.emit('leave-session', { sessionId });
       socket.disconnect();
     };
-  }, [sessionId]);
-
-  const handleRealtimeMessage = useCallback((message: RealtimeMessage) => {
-    switch (message.type) {
-      case 'question':
-        if (message.text) {
-          setCurrentQuestion(message.text);
-          nextPlayTimeRef.current = 0; // Reset audio queue for new question
-          onQuestion?.(message.text);
-        }
-        break;
-
-      case 'transcript':
-        if (message.text) {
-          onTranscript?.(message.text);
-        }
-        break;
-
-      case 'audio_delta':
-        if (message.data) {
-          onAudioDelta?.(message.data);
-          playAudioChunk(message.data);
-        }
-        break;
-
-      case 'audio_done':
-        onAudioDone?.();
-        break;
-
-      case 'interview_complete':
-        setIsInterviewActive(false);
-        onInterviewComplete?.();
-        break;
-
-      case 'speech_started':
-        onSpeechStarted?.();
-        break;
-
-      case 'speech_stopped':
-        onSpeechStopped?.();
-        break;
-
-      case 'error':
-        const errorMsg = message.message || 'Unknown error';
-        setError(errorMsg);
-        onError?.(errorMsg);
-        break;
-    }
-  }, [onQuestion, onTranscript, onAudioDelta, onAudioDone, onInterviewComplete, onError, onSpeechStarted, onSpeechStopped]);
+  }, [sessionId]); // Only depend on sessionId
 
   const startInterview = useCallback(async () => {
+    console.log('[Interview Hook] startInterview called');
+
     if (!socketRef.current) {
       setError('Socket not connected');
+      console.error('[Interview Hook] Socket not connected');
       return;
     }
 
     try {
-      // Initialize audio context
-      audioContextRef.current = new AudioContext({ sampleRate: 24000 });
-      nextPlayTimeRef.current = 0; // Reset audio scheduling
+      // Initialize audio context with default sample rate (48000 Hz is standard for most browsers)
+      audioContextRef.current = new AudioContext();
+      console.log(`[Audio] AudioContext initialized (state: ${audioContextRef.current.state}, sampleRate: ${audioContextRef.current.sampleRate})`);
+
+      // Try to resume the audio context immediately (needed for some browsers)
+      if (audioContextRef.current.state === 'suspended') {
+        console.log('[Audio] AudioContext is suspended, attempting to resume...');
+        await audioContextRef.current.resume();
+        console.log(`[Audio] AudioContext resumed (state: ${audioContextRef.current.state})`);
+      }
+
       audioSentCountRef.current = 0; // Reset audio sent counter
 
       // Emit start event
+      console.log('[Interview Hook] Emitting start-realtime-interview event');
       socketRef.current.emit('start-realtime-interview', { sessionId });
+
+      console.log('[Interview Hook] Setting isInterviewActive to true');
       setIsInterviewActive(true);
       setError(null);
     } catch (err) {
@@ -171,19 +271,14 @@ export function useRealtimeInterview({
       return;
     }
 
-    // Log first audio sent
-    if (audioSentCountRef.current === 0) {
-      console.log('[Interview] Sending first audio chunk to server');
-    }
-    audioSentCountRef.current++;
-
-    // Log every 100 chunks
-    if (audioSentCountRef.current % 100 === 0) {
-      console.log(`[Interview] Sent ${audioSentCountRef.current} audio chunks to server`);
-    }
-
+    console.log(`[Interview] Sending complete audio (${audioData.length} bytes base64)`);
     socketRef.current.emit('realtime-audio', { sessionId, audio: audioData });
   }, [sessionId, isInterviewActive]);
+
+  const stopListening = useCallback(() => {
+    // No longer needed - audio is sent as one complete message
+    console.log('[Interview] Audio sent (no stop_listening signal needed)');
+  }, []);
 
   const endInterview = useCallback(() => {
     if (!socketRef.current) return;
@@ -198,50 +293,13 @@ export function useRealtimeInterview({
     }
   }, [sessionId]);
 
-  const playAudioChunk = useCallback((base64Audio: string) => {
-    if (!audioContextRef.current) return;
-
-    try {
-      // Decode base64 to ArrayBuffer
-      const binaryString = atob(base64Audio);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-
-      // Convert PCM16 to AudioBuffer
-      const audioContext = audioContextRef.current;
-      const audioBuffer = audioContext.createBuffer(1, bytes.length / 2, 24000);
-      const channelData = audioBuffer.getChannelData(0);
-
-      // Convert PCM16 to float32 (little-endian)
-      for (let i = 0; i < channelData.length; i++) {
-        const int16 = (bytes[i * 2] | (bytes[i * 2 + 1] << 8)) << 16 >> 16; // Read as signed int16
-        channelData[i] = int16 / 32768.0;
-      }
-
-      // Schedule audio to play sequentially
-      const currentTime = audioContext.currentTime;
-      const startTime = Math.max(currentTime, nextPlayTimeRef.current);
-
-      const source = audioContext.createBufferSource();
-      source.buffer = audioBuffer;
-      source.connect(audioContext.destination);
-      source.start(startTime);
-
-      // Update next play time
-      nextPlayTimeRef.current = startTime + audioBuffer.duration;
-    } catch (err) {
-      console.error('Error playing audio chunk:', err);
-    }
-  }, []);
-
   return {
     isConnected,
     isInterviewActive,
     currentQuestion,
     startInterview,
     sendAudio,
+    stopListening,
     endInterview,
     error,
   };

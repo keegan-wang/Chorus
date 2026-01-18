@@ -35,6 +35,7 @@ class RealtimeInterviewSession:
         self.openai_ws = None
         self.client_ws = None
         self.turn_index = 0
+        self.audio_buffer = []  # Buffer to collect audio chunks
 
     async def start(self, client_ws: WebSocket):
         """Initialize the interview session"""
@@ -130,6 +131,7 @@ class RealtimeInterviewSession:
             question_text = question_response.text
 
         self.current_question = question_text
+        self.audio_buffer = []  # Clear audio buffer for new question
 
         # Send to client for display
         await self.client_ws.send_json({
@@ -298,18 +300,30 @@ class RealtimeInterviewSession:
                                 await self.handle_transcript(transcript)
 
         elif msg_type == "response.audio.delta":
-            # Stream audio chunk to client
+            # Buffer audio chunk instead of streaming
             audio_data = message.get("delta", "")
-            await self.client_ws.send_json({
-                "type": "audio_delta",
-                "data": audio_data
-            })
+            if audio_data:
+                self.audio_buffer.append(audio_data)
+                if len(self.audio_buffer) % 10 == 0:
+                    print(f"[Audio] Buffered {len(self.audio_buffer)} chunks")
 
         elif msg_type == "response.audio.done":
-            # Audio playback complete
+            # Send complete audio to client
+            print(f"[Audio] Audio generation complete. Sending {len(self.audio_buffer)} buffered chunks as one")
+
+            # Concatenate all audio chunks
+            complete_audio = "".join(self.audio_buffer)
+
+            # Send complete audio to client
             await self.client_ws.send_json({
-                "type": "audio_done"
+                "type": "audio_complete",
+                "data": complete_audio
             })
+
+            print(f"[Audio] Sent complete audio ({len(complete_audio)} bytes base64)")
+
+            # Clear buffer
+            self.audio_buffer = []
 
         elif msg_type == "error":
             error_msg = message.get("error", {})

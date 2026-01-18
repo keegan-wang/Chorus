@@ -85,7 +85,7 @@ A: {request.answerText}
 Task: Score this specific Q&A pair."""
 
         response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-4o-mini",  # Changed from gpt-4 to gpt-4o-mini which supports JSON mode
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
@@ -96,7 +96,7 @@ Task: Score this specific Q&A pair."""
         )
 
         result = json.loads(response.choices[0].message.content)
-        
+
         # 2. DB Persistence (qa_turns)
         qa_turn_data = {
             "session_id": request.sessionId,
@@ -108,11 +108,11 @@ Task: Score this specific Q&A pair."""
             "answer_completed_at": datetime.now().isoformat(),
             "agent_model_version": "gpt-4-quality-v1"
         }
-        
+
         try:
             turn_res = supabase.table("qa_turns").insert(qa_turn_data).execute()
             qa_turn_id = turn_res.data[0]['id']
-            
+
             # 3. DB Persistence (qa_quality_labels)
             label_data = {
                 "qa_turn_id": qa_turn_id,
@@ -127,10 +127,10 @@ Task: Score this specific Q&A pair."""
                 "reasoning": result.get("rationale"),
                 "agent_model_version": "gpt-4-quality-v1"
             }
-            
+
             label_res = supabase.table("qa_quality_labels").insert(label_data).execute()
             quality_label_id = label_res.data[0]['id']
-            
+
         except Exception as db_e:
             print(f"DB Save Error: {db_e}")
             qa_turn_id = None
