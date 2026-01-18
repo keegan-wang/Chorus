@@ -137,26 +137,21 @@ export default function NewStudyPage() {
     setIsLoading(true);
 
     try {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-
-      if (!user) {
+      // Get user from localStorage
+      const storedUser = localStorage.getItem('user');
+      if (!storedUser) {
         toast({
           variant: 'destructive',
           title: 'Not authenticated',
           description: 'Please log in to create a study.',
         });
+        router.push('/login');
         return;
       }
 
-      // Get the user's organization
-      const { data: userData } = await supabase
-        .from('users')
-        .select('organization_id')
-        .eq('id', user.id)
-        .single();
+      const user = JSON.parse(storedUser);
 
-      if (!userData?.organization_id) {
+      if (!user.organizationId) {
         toast({
           variant: 'destructive',
           title: 'No organization',
@@ -165,16 +160,25 @@ export default function NewStudyPage() {
         return;
       }
 
+      const supabase = createClient();
+
       // Create the study
       const { data: study, error: studyError } = await supabase
         .from('studies')
         .insert({
-          organization_id: userData.organization_id,
+          organization_id: user.organizationId,
           title: formData.title,
           description: formData.description,
-          type: formData.type,
-          target_participants: formData.targetParticipants,
-          guardrail_profile_id: formData.guardrailProfile,
+          target_participant_count: formData.targetParticipants,
+          guardrail_profile: formData.guardrailProfile,
+          target_demographics: {
+            age: formData.targetAge,
+            gender: formData.targetGender,
+          },
+          research_intent: {
+            goals: formData.description,
+            type: formData.type,
+          },
           interview_config: {
             max_follow_ups: formData.maxFollowUps,
             max_questions: formData.maxQuestions,
